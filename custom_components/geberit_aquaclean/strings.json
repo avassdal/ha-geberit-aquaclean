@@ -1,0 +1,44 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Geberit AquaClean Setup",
+        "description": "Setting up Geberit AquaClean device discovery.",
+        "data": {
+          "mac": "MAC Address"
+        }
+      },
+      "bluetooth": {
+        "title": "Select Geberit AquaClean Device",
+        "description": "Found {device_count} Geberit AquaClean device(s). Please select your device from the list below.",
+        "data": {
+          "device": "Device"
+        }
+      },
+      "no_devices": {
+        "title": "No Devices Found",
+        "description": "No Geberit AquaClean devices were found during the scan. Please ensure your device is powered on and in pairing mode, or enter the MAC address manually.",
+        "data": {
+          "action": "Action"
+        }
+      },
+      "manual": {
+        "title": "Manual Device Setup",
+        "description": "Enter your Geberit AquaClean device MAC address manually.",
+        "data": {
+          "mac": "MAC Address"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to device. Please ensure the device is powered on and nearby.",
+      "invalid_mac": "Invalid MAC address format. Please use format XX:XX:XX:XX:XX:XX",
+      "device_not_found": "Selected device is no longer available. Please try scanning again.",
+      "discovery_failed": "Bluetooth device discovery failed. Please ensure Bluetooth is enabled and try again.",
+      "unknown": "Unexpected error occurred"
+    },
+    "abort": {
+      "already_configured": "Device is already configured"
+    }
+  }
+}
