@@ -2,6 +2,16 @@
 
 A Home Assistant custom component for monitoring and controlling Geberit AquaClean smart toilets via Bluetooth Low Energy (BLE).
 
+## ⚠️ **Important Notice**
+
+**This integration is currently in early development and has not been extensively tested.** Use at your own risk. Please report any issues through the [issue tracker](https://github.com/schmidtfx/ha-geberit-aquaclean/issues).
+
+**Known Limitations:**
+
+- Limited testing across different AquaClean models
+- BLE connection stability may vary
+- Some advanced features may not be implemented
+
 ## Features
 
 **Binary Sensors:**
