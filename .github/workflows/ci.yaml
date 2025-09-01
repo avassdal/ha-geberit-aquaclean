@@ -32,16 +32,4 @@ jobs:
           python -m pip install -r requirements.test.txt
       - name: "Run tests for ${{ matrix.python-version }}"
         run: |
-          pip install pytest-cov
-          pip install coverage
-          pytest \
-            -qq \
-            --timeout=9 \
-            --durations=10 \
-            -n auto \
-            --cov custom_components.geberit_aquaclean \
-            --cov-report xml \
-            -o console_output_style=count \
-            -p no:sugar \
-            tests
-          python -m coverage xml
+          pytest tests/ -v
