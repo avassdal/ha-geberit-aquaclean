@@ -1,9 +1,7 @@
 """Geberit AquaClean BLE client implementation."""
-import asyncio
 import logging
-import struct
 from dataclasses import dataclass
-from typing import Optional, Dict, Any
+from typing import Optional
 from bleak import BleakClient, BleakScanner, BleakError
 from .scanner import get_scanner
 
@@ -61,11 +59,15 @@ class GeberitAquaCleanClient:
             self._client = BleakClient(device)
             await self._client.connect()
             
+            # Check connection status after connect() (bleak 1.0+ returns None)
             if self._client.is_connected:
                 _LOGGER.info("Connected to Geberit AquaClean at %s", self.mac_address)
                 self._connected = True
                 await self._initialize_device()
                 return True
+            else:
+                _LOGGER.error("Failed to establish connection to %s", self.mac_address)
+                return False
                 
         except BleakError as e:
             _LOGGER.error("Failed to connect to device: %s", e)
