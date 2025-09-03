@@ -15,7 +15,6 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
-from .coordinator import GeberitAquaCleanCoordinator
 from .entity import GeberitAquaCleanEntity
 
 _LOGGER = logging.getLogger(__name__)
@@ -27,7 +26,8 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the Geberit AquaClean light entities from a config entry."""
-    coordinator: GeberitAquaCleanCoordinator = hass.data[DOMAIN][config_entry.entry_id]
+    data = hass.data[DOMAIN][config_entry.entry_id]
+    coordinator = data["coordinator"]
     
     entities = []
     
@@ -53,10 +53,10 @@ class GeberitNightLight(GeberitAquaCleanEntity, LightEntity):
     _attr_supported_color_modes = {ColorMode.RGB}
     _attr_icon = "mdi:lightbulb-night"
 
-    def __init__(self, coordinator: GeberitAquaCleanCoordinator) -> None:
+    def __init__(self, coordinator) -> None:
         """Initialize the night light."""
         super().__init__(coordinator)
-        self._attr_unique_id = f"{self.coordinator.config_entry.entry_id}_night_light"
+        self._attr_unique_id = f"{self.coordinator.base_unique_id}_night_light"
 
     @property
     def is_on(self) -> bool:
@@ -133,10 +133,10 @@ class GeberitOrientationLight(GeberitAquaCleanEntity, LightEntity):
     _attr_supported_color_modes = {ColorMode.BRIGHTNESS}
     _attr_icon = "mdi:lightbulb-on-outline"
 
-    def __init__(self, coordinator: GeberitAquaCleanCoordinator) -> None:
+    def __init__(self, coordinator) -> None:
         """Initialize the orientation light."""
         super().__init__(coordinator)
-        self._attr_unique_id = f"{self.coordinator.config_entry.entry_id}_orientation_light"
+        self._attr_unique_id = f"{self.coordinator.base_unique_id}_orientation_light"
 
     @property
     def is_on(self) -> bool:
