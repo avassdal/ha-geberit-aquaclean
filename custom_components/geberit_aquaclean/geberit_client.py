@@ -178,6 +178,17 @@ class GeberitAquaCleanClient:
             hex_data = binascii.hexlify(data).decode('ascii')
             if DEBUG_MODE:
                 _LOGGER.info("Received notification from %s: %s (length: %d)", sender, hex_data, len(data))
+                
+                # Decode frame header according to Geberit protocol documentation
+                if len(data) > 1:
+                    header = data[0]
+                    frame_id = (header >> 5) & 0x07  # Bits 7-5
+                    msg_type_present = (header >> 4) & 0x01  # Bit 4
+                    transaction = (header >> 1) & 0x07  # Bits 3-1
+                    flags = header & 0x01  # Bit 0
+                    
+                    _LOGGER.info("Frame Header Analysis: ID=%d, MsgType=%d, Trans=%d, Flags=%d", 
+                                frame_id, msg_type_present, transaction, flags)
             
             # Parse frame from received data  
             frame = GeberitProtocolSerializer.decode_from_cobs(data)
