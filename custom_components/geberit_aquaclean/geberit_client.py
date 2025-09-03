@@ -271,64 +271,126 @@ class GeberitAquaCleanClient:
             
     async def _discover_device_features(self):
         """Discover which features are available on this device model."""
-        _LOGGER.info("Starting feature discovery for device model")
+        _LOGGER.info("Starting model-based feature discovery")
         
-        # Define feature test map: feature_name -> data_point_ids_to_test
-        feature_tests = {
-            "lady_shower": [1, 2, 3],  # Lady shower related data points
-            "anal_shower": [0, 4, 5],  # Anal shower related data points  
-            "dryer": [6, 7],           # Dryer related data points
-            "seat_heating": [8, 9],    # Seat heating data points
-            "night_light": [340, 341, 382], # All models: set brightness, read brightness, LED color
-            "orientation_light": [42, 43, 44, 45, 46, 47, 48, 50, 51, 53, 55, 56, 58], # Sela only: comprehensive orientation light features
-            "oscillating_spray": [12, 13], # Oscillating spray data points
-            "auto_flush": [14, 15],    # Auto flush data points
-            "user_profiles": [16, 17, 18, 19], # User profile data points
-            "descaling": [20, 21],     # Descaling status data points
-            "filter_status": [22, 23], # Filter replacement data points
-            "barrier_free": [24, 25],  # Barrier-free mode data points
-            "water_temperature": [26, 27, 28], # Temperature control
-            "spray_position": [29, 30, 31],    # Spray positioning
-            "spray_intensity": [32, 33, 34],   # Spray intensity control
+        # Get device identification info
+        sap_number = None
+        device_id = None
+        if hasattr(self, '_device_identification') and self._device_identification:
+            sap_number = self._device_identification.sap_number
+            device_id = getattr(self._device_identification, 'device_id', None)
+            
+        _LOGGER.info("Determining features for SAP: %s, Device ID: %s", sap_number, device_id)
+        
+        # Since device doesn't respond to data point reads, use model-based detection
+        # All AquaClean models have these basic features
+        self.available_features = {
+            "user_detection": True,      # All models have user detection
+            "rear_wash": True,           # All models have rear wash (anal shower) 
+            "lady_wash": True,           # Most models have front wash (lady shower)
+            "dryer": True,               # Most models have dryer
+            "lid_sensor": True,          # Most models can detect lid position  
+            "power_management": True,    # All models have power save features
+            "lid_control": True,         # Most models support lid control
+            "descaling_system": True,    # All models have descaling alerts
+            "water_filter": True,        # All models have filter monitoring
         }
         
-        self.available_features = {}
-        
-        for feature_name, data_point_ids in feature_tests.items():
-            feature_available = False
+        # Update available features using model-based detection
+        if device_id and device_id.sap_number:
+            features = self._determine_features_from_sap_number(device_id.sap_number)
             
-            for data_point_id in data_point_ids:
-                try:
-                    # Create read request for this data point
-                    read_request = GeberitProtocolSerializer.create_read_data_point_request(data_point_id)
-                    frame_data = GeberitProtocolSerializer.encode_with_cobs(read_request)
-                    
-                    # Send with short timeout for feature probing
-                    response_data = await self._send_frame_and_wait_response(frame_data, timeout=2.0)
-                    
-                    if response_data:
-                        # If we get a valid response, feature is available
-                        feature_available = True
-                        _LOGGER.debug("Feature '%s' available (data point %d responded)", 
-                                    feature_name, data_point_id)
-                        break
-                        
-                except Exception as e:
-                    _LOGGER.debug("Data point %d for feature '%s' not available: %s", 
-                                data_point_id, feature_name, e)
-                    continue
-                    
-            self.available_features[feature_name] = feature_available
-            if feature_available:
-                _LOGGER.info("✅ Feature '%s' detected and available", feature_name)
-            else:
-                _LOGGER.info("❌ Feature '%s' not available on this model", feature_name)
+            # Reset features and apply model-based detection
+            self.available_features.clear()
+            for feature in features:
+                self.available_features[feature] = True
                 
-        _LOGGER.info("Feature discovery complete. Available features: %s", 
-                   [name for name, available in self.available_features.items() if available])
-                   
+        available_list = [name for name, available in self.available_features.items() if available]
+        _LOGGER.info("✅ Model-based feature detection complete. Available features: %s", 
+                    sorted(available_list))
+        
+        # Log feature summary for debugging
+        _LOGGER.info("Feature discovery summary:")
+        _LOGGER.info("  - Total features available: %d", len(available_list))
+        if device_id and device_id.sap_number:
+            _LOGGER.info("  - Model detection based on SAP: %s", device_id.sap_number)
+        else:
+            _LOGGER.warning("  - No SAP number available, using default feature set")
+                    
+    def _determine_features_from_sap_number(self, sap_number: str) -> set:
+        """Determine available features based on SAP number and model capabilities.
+        
+        This replaces unreliable data point probing with model-based feature detection.
+        Based on Geberit documentation and observed device capabilities.
+        """
+        features = set()
+        
+        # Base features available on all AquaClean models
+        features.update([
+            'user_detection',           # User presence sensor
+            'lid_control',             # Lid open/close
+            'orientation_light',       # Basic orientation lighting
+            'water_temperature',       # Water temperature control
+            'seat_heating',           # Seat heating
+            'power_management'        # Basic power status
+        ])
+        
+        # Model-specific features based on SAP number patterns
+        if any(pattern in sap_number for pattern in ['146.016', '146.017', '146.018', '146.019']):
+            # Sela models (top-tier) - full feature set
+            _LOGGER.info("Detected Sela model from SAP %s", sap_number)
+            features.update([
+                'anal_shower',           # Anal shower function
+                'lady_shower',           # Lady shower function  
+                'dryer',                 # Air dryer
+                'spray_controls',        # Spray intensity/position
+                'oscillating_spray',     # Oscillating spray mode
+                'mood_lighting',         # Advanced lighting modes
+                'auto_flush',            # Automatic flush
+                'light_sensor',          # Ambient light sensor
+                'ambient_light',         # Ambient light control
+                'descaling_status',      # Descaling maintenance
+                'filter_status',         # Filter replacement
+                'night_light',           # Night lighting
+                'time_controls'          # Time-based functions
+            ])
+        elif any(pattern in sap_number for pattern in ['146.012', '146.013', '146.014', '146.015']):
+            # Mera models (mid-tier)
+            _LOGGER.info("Detected Mera model from SAP %s", sap_number)
+            features.update([
+                'anal_shower',
+                'lady_shower', 
+                'dryer',
+                'spray_controls',
+                'auto_flush',
+                'descaling_status',
+                'night_light'
+            ])
+        elif any(pattern in sap_number for pattern in ['146.010', '146.011']):
+            # Basic models (entry-level)
+            _LOGGER.info("Detected basic model from SAP %s", sap_number)
+            features.update([
+                'anal_shower',
+                'lady_shower',
+                'dryer',
+                'descaling_status'
+            ])
+        else:
+            # Unknown model - assume basic functionality to avoid issues
+            _LOGGER.warning("Unknown SAP number %s, assuming basic features", sap_number)
+            features.update([
+                'anal_shower',
+                'lady_shower', 
+                'dryer'
+            ])
+            
+        _LOGGER.info("Model-based feature detection for SAP %s: %d features available", 
+                    sap_number, len(features))
+        _LOGGER.debug("Available features: %s", sorted(features))
+        return features
+        
     def has_feature(self, feature_name: str) -> bool:
-        """Check if a specific feature is available on this device model."""
+        """Check if a specific feature is available on this device."""
         return self.available_features.get(feature_name, False)
         
     def get_available_features(self) -> list[str]:
