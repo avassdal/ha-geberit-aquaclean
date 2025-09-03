@@ -1,4 +1,6 @@
 """Geberit AquaClean integration."""
+import asyncio
+import contextlib
 import logging
 from datetime import timedelta
 
@@ -7,6 +9,7 @@ from homeassistant.const import Platform
 from homeassistant.const import CONF_MAC_ADDRESS
 from homeassistant.core import HomeAssistant, CoreState, callback
 from homeassistant.helpers.update_coordinator import UpdateFailed
+from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.components import bluetooth
 from homeassistant.components.bluetooth.active_update_coordinator import ActiveBluetoothDataUpdateCoordinator
 
@@ -41,31 +44,33 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass, mac_address.upper(), connectable=True
     )
     if not ble_device:
-        _LOGGER.error("Device %s not found in Bluetooth registry", mac_address)
-        return False
+        raise ConfigEntryNotReady(f"Could not find Geberit AquaClean device with address {mac_address}")
     
     # Create ActiveBluetoothCoordinator (best practice for devices needing active connections)
-    coordinator = GeberitActiveBluetoothCoordinator(hass, client, ble_device)
+    coordinator = GeberitActiveBluetoothCoordinator(hass, client, ble_device, entry.title, entry.unique_id)
+    entry.async_on_unload(coordinator.async_start())
     
-    # Fetch initial data
-    await coordinator.async_config_entry_first_refresh()
+    # Wait for device to be ready
+    if not await coordinator.async_wait_ready():
+        raise ConfigEntryNotReady(f"{mac_address} is not advertising state")
     
     hass.data[DOMAIN][entry.entry_id] = {
         "client": client,
         "coordinator": coordinator,
     }
 
-    # Set up platforms
+    # Set up platforms  
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-    # Track device unavailability (best practice)
-    entry.async_on_unload(
-        bluetooth.async_track_unavailable(
-            hass, coordinator._async_handle_unavailable, mac_address, connectable=True
-        )
-    )
+    # Add update listener for options changes
+    entry.async_on_unload(entry.add_update_listener(_async_update_listener))
 
     return True
+
+
+async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Handle options update."""
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -81,7 +86,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 class GeberitActiveBluetoothCoordinator(ActiveBluetoothDataUpdateCoordinator):
     """Active Bluetooth coordinator for Geberit AquaClean devices."""
 
-    def __init__(self, hass: HomeAssistant, client: GeberitAquaCleanClient, ble_device):
+    def __init__(self, hass: HomeAssistant, client: GeberitAquaCleanClient, ble_device, device_name: str, base_unique_id: str):
         """Initialize the coordinator."""
         super().__init__(
             hass=hass,
@@ -94,6 +99,10 @@ class GeberitActiveBluetoothCoordinator(ActiveBluetoothDataUpdateCoordinator):
         )
         self.client = client
         self.ble_device = ble_device
+        self.device_name = device_name
+        self.base_unique_id = base_unique_id
+        self._ready_event = asyncio.Event()
+        self._was_unavailable = True
 
     @callback
     def _needs_poll(
@@ -119,12 +128,22 @@ class GeberitActiveBluetoothCoordinator(ActiveBluetoothDataUpdateCoordinator):
         except Exception as exception:
             raise UpdateFailed(f"Error communicating with API: {exception}")
 
+    async def async_wait_ready(self) -> bool:
+        """Wait for the device to be ready."""
+        with contextlib.suppress(asyncio.TimeoutError):
+            async with asyncio.timeout(30.0):  # 30 second timeout for device readiness
+                await self._ready_event.wait()
+                return True
+        return False
+
     @callback
     def _async_handle_unavailable(
         self, service_info: bluetooth.BluetoothServiceInfoBleak
     ) -> None:
         """Handle the device going unavailable."""
+        super()._async_handle_unavailable(service_info)
         _LOGGER.warning("Device %s is unavailable", service_info.address)
+        self._was_unavailable = True
         # Mark device as unavailable
         if hasattr(self.client, '_device_state'):
             self.client._device_state.connected = False
@@ -136,7 +155,13 @@ class GeberitActiveBluetoothCoordinator(ActiveBluetoothDataUpdateCoordinator):
         change: bluetooth.BluetoothChange,
     ) -> None:
         """Handle a Bluetooth event (advertisement received)."""
-        # For Geberit devices, we primarily use active connections
-        # but we can track availability through advertisements
-        if change == bluetooth.BluetoothChange.ADVERTISEMENT:
-            _LOGGER.debug("Advertisement from %s: RSSI %s", service_info.address, service_info.rssi)
+        self.ble_device = service_info.device
+        _LOGGER.debug("Bluetooth event from %s: %s", service_info.address, change)
+        self._ready_event.set()
+
+        if not self._was_unavailable:
+            return
+
+        self._was_unavailable = False
+        _LOGGER.info("Device %s is now available (RSSI: %s)", service_info.address, service_info.rssi)
+        super()._async_handle_bluetooth_event(service_info, change)
