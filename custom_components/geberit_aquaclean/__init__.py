@@ -1,11 +1,11 @@
-"""The Geberit AquaClean integration."""
-import asyncio
+"""Geberit AquaClean integration."""
 import logging
 from datetime import timedelta
 
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import Platform
+from homeassistant.const import CONF_MAC_ADDRESS
 from homeassistant.core import HomeAssistant
-from homeassistant.const import CONF_MAC, Platform
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import DOMAIN
@@ -22,10 +22,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Geberit AquaClean from a config entry."""
     hass.data.setdefault(DOMAIN, {})
 
-    mac_address = entry.data[CONF_MAC]
+    mac_address = entry.data[CONF_MAC_ADDRESS]
     
     # Initialize the client
-    client = GeberitAquaCleanClient(mac_address)
+    client = GeberitAquaCleanClient(mac_address, hass)
     
     # Create coordinator
     coordinator = GeberitDataUpdateCoordinator(hass, client)

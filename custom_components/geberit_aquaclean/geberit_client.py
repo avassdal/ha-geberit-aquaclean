@@ -3,8 +3,10 @@ import asyncio
 import logging
 from dataclasses import dataclass
 from typing import Optional
-from bleak import BleakClient, BleakScanner, BleakError
-from .scanner import get_scanner
+from bleak import BleakClient
+from bleak_retry_connector import establish_connection
+from homeassistant.components import bluetooth
+from homeassistant.core import HomeAssistant
 from .protocol import (
     BLEFrameCollector,
     GeberitProtocolSerializer,
@@ -19,8 +21,9 @@ _LOGGER = logging.getLogger(__name__)
 WRITE_CHARACTERISTIC_UUID = "00002A24-0000-1000-8000-00805F9B34FB"
 NOTIFY_CHARACTERISTIC_UUID = "00002A25-0000-1000-8000-00805F9B34FB"
 
-# Response timeout for BLE commands
+# Response timeout for BLE commands (increased per HA best practices)
 RESPONSE_TIMEOUT = 10.0
+CONNECTION_TIMEOUT = 15.0
 
 @dataclass
 class DeviceState:
@@ -60,9 +63,10 @@ class DeviceState:
 class GeberitAquaCleanClient:
     """Client for Geberit AquaClean toilet."""
 
-    def __init__(self, mac_address: str):
+    def __init__(self, mac_address: str, hass: HomeAssistant):
         """Initialize the client."""
         self.mac_address = mac_address
+        self._hass = hass
         self._client: Optional[BleakClient] = None
         self._device_state = DeviceState()
         # Initialize frame collector for handling multi-frame messages
@@ -72,47 +76,47 @@ class GeberitAquaCleanClient:
         self._last_response_data: Optional[bytes] = None
         
     async def connect(self) -> bool:
-        """Connect to the device."""
+        """Connect to the device using Home Assistant Bluetooth best practices."""
         try:
             if self._client and self._client.is_connected:
                 return True
                 
-            # Try to find device using scanner first (more reliable)
-            scanner = get_scanner()
-            device = await scanner.find_device_by_address(self.mac_address)
+            # Use Home Assistant's Bluetooth scanner (best practice)
+            ble_device = bluetooth.async_ble_device_from_address(
+                self._hass, self.mac_address.upper(), connectable=True
+            )
             
-            # Fallback to direct BleakScanner if scanner doesn't find it
-            if not device:
-                device = await BleakScanner.find_device_by_address(
-                    self.mac_address, timeout=10.0
-                )
-            
-            if not device:
-                _LOGGER.error("Device with address %s not found", self.mac_address)
+            if not ble_device:
+                _LOGGER.error("Device %s not found in Bluetooth registry", self.mac_address)
                 return False
                 
-            self._client = BleakClient(device)
-            await self._client.connect()
+            # Use bleak-retry-connector for reliable connection (best practice)
+            self._client = await establish_connection(
+                BleakClient,
+                ble_device,
+                self.mac_address,
+                timeout=CONNECTION_TIMEOUT,
+                max_attempts=3,
+                use_services_cache=True
+            )
             
-            # Check connection status after connect() (bleak 1.0+ returns None)
-            if self._client.is_connected:
-                _LOGGER.info("Connected to Geberit AquaClean at %s", self.mac_address)
-                self._connected = True
-                
-                # Setup notifications for receiving data
-                await self._setup_notifications()
-                
-                # Initialize device communication
-                await self._initialize_device()
-                return True
-            else:
-                _LOGGER.error("Failed to establish connection to %s", self.mac_address)
+            if not self._client.is_connected:
+                _LOGGER.error("Failed to connect to device %s", self.mac_address)
                 return False
                 
-        except BleakError as e:
-            _LOGGER.error("Failed to connect to device: %s", e)
+            # Setup notifications
+            await self._setup_notifications()
+            
+            # Initialize device
+            await self._initialize_device()
+            
+            _LOGGER.info("Successfully connected to device %s", self.mac_address)
+            return True
+            
         except Exception as e:
-            _LOGGER.error("Unexpected error connecting to device: %s", e)
+            _LOGGER.error("Failed to connect to device %s: %s", self.mac_address, e)
+            self._client = None
+            return False
             
         return False
         
