@@ -3,7 +3,7 @@ import asyncio
 import logging
 from dataclasses import dataclass
 from typing import Optional
-from bleak import BleakClient
+from bleak import BleakClient, BleakScanner
 from bleak_retry_connector import establish_connection
 from homeassistant.components import bluetooth
 from homeassistant.core import HomeAssistant
@@ -61,17 +61,18 @@ class DeviceState:
 
 
 class GeberitAquaCleanClient:
-    """Client for Geberit AquaClean toilet."""
-
-    def __init__(self, mac_address: str, hass: HomeAssistant):
+    """Client for communicating with Geberit AquaClean devices via BLE."""
+    
+    def __init__(self, mac_address: str, hass: HomeAssistant, scanner: Optional[BleakScanner] = None):
         """Initialize the client."""
         self.mac_address = mac_address
         self._hass = hass
+        self._scanner = scanner or bluetooth.async_get_scanner(hass)
         self._client: Optional[BleakClient] = None
+        self._connected = False
+        self._device_identification: Optional[DeviceIdentification] = None
         self._device_state = DeviceState()
-        # Initialize frame collector for handling multi-frame messages
         self._frame_collector = BLEFrameCollector()
-        self._device_identification = DeviceIdentification()
         self._response_event = asyncio.Event()
         self._last_response_data: Optional[bytes] = None
         
