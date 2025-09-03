@@ -92,7 +92,10 @@ class GeberitBinarySensor(CoordinatorEntity, BinarySensorEntity):
     @property
     def available(self) -> bool:
         """Return True if entity is available."""
-        return self.coordinator.last_update_success and self.coordinator.data is not None
+        return (
+            self.coordinator.data is not None 
+            and getattr(self.coordinator.data, "connected", False)
+        )
 
     @property
     def device_info(self):
@@ -106,5 +109,4 @@ class GeberitBinarySensor(CoordinatorEntity, BinarySensorEntity):
             "sw_version": getattr(device_data, "firmware_version", "Unknown") if device_data else "Unknown",
             "serial_number": getattr(device_data, "serial_number", None) if device_data else None,
             "hw_version": getattr(device_data, "sap_number", None) if device_data else None,
-            "via_device": (DOMAIN, self.coordinator.client.mac_address),
         }

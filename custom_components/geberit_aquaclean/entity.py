@@ -19,8 +19,7 @@ class GeberitAquaCleanEntity(CoordinatorEntity):
     def available(self) -> bool:
         """Return True if entity is available."""
         return (
-            self.coordinator.last_update_success 
-            and self.coordinator.data is not None 
+            self.coordinator.data is not None 
             and getattr(self.coordinator.data, "connected", False)
         )
 

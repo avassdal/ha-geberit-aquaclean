@@ -56,8 +56,7 @@ class GeberitLidSwitch(CoordinatorEntity, SwitchEntity):
     def available(self) -> bool:
         """Return True if entity is available."""
         return (
-            self.coordinator.last_update_success 
-            and self.coordinator.data is not None 
+            self.coordinator.data is not None 
             and getattr(self.coordinator.data, "connected", False)
         )
 
@@ -120,8 +119,7 @@ class GeberitRearWashSwitch(CoordinatorEntity, SwitchEntity):
     def available(self) -> bool:
         """Return True if entity is available."""
         return (
-            self.coordinator.last_update_success 
-            and self.coordinator.data is not None 
+            self.coordinator.data is not None 
             and getattr(self.coordinator.data, "connected", False)
         )
 
@@ -184,8 +182,7 @@ class GeberitFrontWashSwitch(CoordinatorEntity, SwitchEntity):
     def available(self) -> bool:
         """Return True if entity is available."""
         return (
-            self.coordinator.last_update_success 
-            and self.coordinator.data is not None 
+            self.coordinator.data is not None 
             and getattr(self.coordinator.data, "connected", False)
         )
 
@@ -248,8 +245,7 @@ class GeberitDryerSwitch(CoordinatorEntity, SwitchEntity):
     def available(self) -> bool:
         """Return True if entity is available."""
         return (
-            self.coordinator.last_update_success 
-            and self.coordinator.data is not None 
+            self.coordinator.data is not None 
             and getattr(self.coordinator.data, "connected", False)
         )
 
