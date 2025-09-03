@@ -36,6 +36,11 @@ async def async_setup_entry(
         entities.append(GeberitNightLight(coordinator))
         _LOGGER.info("Added night light entity")
     
+    # Add orientation light entity if feature is available (Sela only)
+    if coordinator.client.has_feature("orientation_light"):
+        entities.append(GeberitOrientationLight(coordinator))
+        _LOGGER.info("Added orientation light entity")
+    
     if entities:
         async_add_entities(entities, True)
 
@@ -113,6 +118,68 @@ class GeberitNightLight(GeberitAquaCleanEntity, LightEntity):
             await self.coordinator.async_request_refresh()
         except Exception as e:
             _LOGGER.error("Failed to turn off night light: %s", e)
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
+        self.async_write_ha_state()
+
+
+class GeberitOrientationLight(GeberitAquaCleanEntity, LightEntity):
+    """Representation of the Geberit AquaClean orientation light (Sela only)."""
+
+    _attr_name = "Orientation Light"
+    _attr_color_mode = ColorMode.BRIGHTNESS
+    _attr_supported_color_modes = {ColorMode.BRIGHTNESS}
+    _attr_icon = "mdi:lightbulb-on-outline"
+
+    def __init__(self, coordinator: GeberitAquaCleanCoordinator) -> None:
+        """Initialize the orientation light."""
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{self.coordinator.config_entry.entry_id}_orientation_light"
+
+    @property
+    def is_on(self) -> bool:
+        """Return true if the orientation light is on."""
+        if not self.coordinator.data:
+            return False
+        return getattr(self.coordinator.data, 'orientation_light', False)
+
+    @property
+    def brightness(self) -> int | None:
+        """Return the brightness of the orientation light (0-255)."""
+        if not self.coordinator.data:
+            return None
+        # Get brightness from device state (0-100) and convert to HA format (0-255)
+        device_brightness = getattr(self.coordinator.data, 'orientation_light_brightness', 0)
+        return int((device_brightness / 100.0) * 255) if device_brightness else 0
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Turn on the orientation light."""
+        brightness = kwargs.get(ATTR_BRIGHTNESS)
+        
+        try:
+            # Turn on the orientation light
+            await self.coordinator.client.set_orientation_light_state(True)
+            
+            # Set brightness if provided (convert from 0-255 to 0-100)
+            if brightness is not None:
+                device_brightness = int((brightness / 255.0) * 100)
+                await self.coordinator.client.set_orientation_light_brightness(device_brightness)
+                
+            # Request coordinator update
+            await self.coordinator.async_request_refresh()
+            
+        except Exception as e:
+            _LOGGER.error("Failed to turn on orientation light: %s", e)
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Turn off the orientation light."""
+        try:
+            await self.coordinator.client.set_orientation_light_state(False)
+            await self.coordinator.async_request_refresh()
+        except Exception as e:
+            _LOGGER.error("Failed to turn off orientation light: %s", e)
 
     @callback
     def _handle_coordinator_update(self) -> None:

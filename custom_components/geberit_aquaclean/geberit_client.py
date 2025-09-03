@@ -54,6 +54,20 @@ class DeviceState:
     night_light_red: int = 255     # RGB Red 0-255
     night_light_green: int = 255   # RGB Green 0-255
     night_light_blue: int = 255    # RGB Blue 0-255
+    # Orientation light (Sela only)
+    orientation_light: bool = False
+    orientation_light_brightness: int = 50  # 0-100%
+    orientation_light_mode: int = 0     # 0-2: mode setting
+    orientation_light_intensity: int = 2  # 0-4: intensity level
+    orientation_light_sensor_dependent: bool = False  # 0-1: sensor activation
+    orientation_light_ambient_dependent: bool = False  # 0-1: ambient light dependent
+    orientation_light_led_override: bool = False  # 0-1: LED override
+    orientation_light_follow_up_time: int = 30  # Follow-up time (seconds)
+    orientation_light_sensor_distance: int = 2  # Sensor distance setting
+    orientation_light_sensor_sensitivity: int = 2  # Sensor sensitivity
+    orientation_light_movement_sensor: bool = True  # 0-1: movement sensor
+    orientation_light_ambient_sensitivity: int = 2  # Ambient light sensitivity
+    orientation_light_dark_threshold: int = 10  # Dark threshold setting
     # Spray controls
     spray_intensity: int = 3  # 1-5 levels
     spray_position: int = 3  # 1-5 positions
@@ -259,7 +273,8 @@ class GeberitAquaCleanClient:
             "anal_shower": [0, 4, 5],  # Anal shower related data points  
             "dryer": [6, 7],           # Dryer related data points
             "seat_heating": [8, 9],    # Seat heating data points
-            "night_light": [10, 11, 35, 36, 37], # Night light on/off, brightness, RGB values
+            "night_light": [340, 341, 382], # All models: set brightness, read brightness, LED color
+            "orientation_light": [42, 43, 44, 45, 46, 47, 48, 50, 51, 53, 55, 56, 58], # Sela only: comprehensive orientation light features
             "oscillating_spray": [12, 13], # Oscillating spray data points
             "auto_flush": [14, 15],    # Auto flush data points
             "user_profiles": [16, 17, 18, 19], # User profile data points
@@ -315,22 +330,23 @@ class GeberitAquaCleanClient:
         return [name for name, available in self.available_features.items() if available]
         
     async def set_night_light_state(self, state: bool) -> bool:
-        """Turn night light on or off."""
+        """Turn night light on or off using brightness control."""
         try:
-            command_id = 10 if state else 11  # Based on Geberit protocol documentation
-            command_frame = GeberitProtocolSerializer.create_high_level_command(command_id)
-            frame_data = GeberitProtocolSerializer.encode_with_cobs(command_frame)
-            response_data = await self._send_frame_and_wait_response(frame_data)
-            return response_data is not None
+            # Turn on/off by setting brightness to 100% or 0%
+            brightness = 100 if state else 0
+            return await self.set_night_light_brightness(brightness)
         except Exception as e:
             _LOGGER.error("Failed to set night light state to %s: %s", state, e)
             return False
             
     async def set_night_light_brightness(self, brightness: int) -> bool:
-        """Set night light brightness (0-100)."""
+        """Set night light brightness (0-100%) using official data point 340."""
         try:
-            # Data point 35 for brightness control
-            write_request = GeberitProtocolSerializer.create_write_data_point_request(35, brightness)
+            # Clamp brightness to valid range
+            brightness = max(0, min(100, brightness))
+            
+            # Use data point 340: DP_LIGHTING_SET_BRIGHTNESS (Write-Only, All Models)
+            write_request = GeberitProtocolSerializer.create_write_data_point_request(340, brightness)
             frame_data = GeberitProtocolSerializer.encode_with_cobs(write_request)
             response_data = await self._send_frame_and_wait_response(frame_data)
             return response_data is not None
@@ -339,18 +355,194 @@ class GeberitAquaCleanClient:
             return False
             
     async def set_night_light_color(self, red: int, green: int, blue: int) -> bool:
-        """Set night light RGB color."""
+        """Set night light RGB color using official data point 382."""
         try:
-            # Data points 36, 37, 38 for RGB values
-            success = True
-            success &= await self._write_data_point(36, red)    # Red
-            success &= await self._write_data_point(37, green)  # Green  
-            success &= await self._write_data_point(38, blue)   # Blue
-            return success
+            # Clamp color values to valid range
+            red = max(0, min(255, red))
+            green = max(0, min(255, green))
+            blue = max(0, min(255, blue))
+            
+            # Convert RGB to 24-bit color value (0-16777215)
+            # Format: 0xRRGGBB
+            color_value = (red << 16) | (green << 8) | blue
+            
+            # Use data point 382: DP_LED_COLOR (Read/Write, All Models)
+            write_request = GeberitProtocolSerializer.create_write_data_point_request(382, color_value)
+            frame_data = GeberitProtocolSerializer.encode_with_cobs(write_request)
+            response_data = await self._send_frame_and_wait_response(frame_data)
+            return response_data is not None
         except Exception as e:
             _LOGGER.error("Failed to set night light color to RGB(%d,%d,%d): %s", red, green, blue, e)
             return False
             
+    async def set_orientation_light_state(self, state: bool) -> bool:
+        """Turn orientation light on or off using brightness control (Sela only)."""
+        try:
+            # Turn on/off by setting brightness to 100% or 0%
+            brightness = 100 if state else 0
+            return await self.set_orientation_light_brightness(brightness)
+        except Exception as e:
+            _LOGGER.error("Failed to set orientation light state to %s: %s", state, e)
+            return False
+            
+    async def set_orientation_light_brightness(self, brightness: int) -> bool:
+        """Set orientation light brightness (0-100%) using data point 43 (Sela only)."""
+        try:
+            # Clamp brightness to valid range
+            brightness = max(0, min(100, brightness))
+            
+            # Use data point 43: DP_ORIENTATION_LIGHT_SET_LED (Write-Only, Sela Only)
+            write_request = GeberitProtocolSerializer.create_write_data_point_request(43, brightness)
+            frame_data = GeberitProtocolSerializer.encode_with_cobs(write_request)
+            response_data = await self._send_frame_and_wait_response(frame_data)
+            return response_data is not None
+        except Exception as e:
+            _LOGGER.error("Failed to set orientation light brightness to %d: %s", brightness, e)
+            return False
+            
+    async def set_orientation_light_mode(self, mode: int) -> bool:
+        """Set orientation light mode (0-2) using data point 44 (Sela only)."""
+        try:
+            # Clamp mode to valid range (0-2)
+            mode = max(0, min(2, mode))
+            
+            # Use data point 44: DP_ORIENTATION_LIGHT_MODE (Read/Write, Sela Only)
+            write_request = GeberitProtocolSerializer.create_write_data_point_request(44, mode)
+            frame_data = GeberitProtocolSerializer.encode_with_cobs(write_request)
+            response_data = await self._send_frame_and_wait_response(frame_data)
+            return response_data is not None
+        except Exception as e:
+            _LOGGER.error("Failed to set orientation light mode to %d: %s", mode, e)
+            return False
+            
+    async def set_orientation_light_intensity(self, intensity: int) -> bool:
+        """Set orientation light intensity (0-4) using data point 48 (Sela only)."""
+        try:
+            # Clamp intensity to valid range (0-4)
+            intensity = max(0, min(4, intensity))
+            
+            # Use data point 48: DP_ORIENTATION_LIGHT_INTENSITY (Read/Write, Sela Only)
+            write_request = GeberitProtocolSerializer.create_write_data_point_request(48, intensity)
+            frame_data = GeberitProtocolSerializer.encode_with_cobs(write_request)
+            response_data = await self._send_frame_and_wait_response(frame_data)
+            return response_data is not None
+        except Exception as e:
+            _LOGGER.error("Failed to set orientation light intensity to %d: %s", intensity, e)
+            return False
+            
+    async def set_orientation_light_sensor_dependent(self, enabled: bool) -> bool:
+        """Enable/disable sensor-dependent activation (data point 45, Sela only)."""
+        try:
+            value = 1 if enabled else 0
+            write_request = GeberitProtocolSerializer.create_write_data_point_request(45, value)
+            frame_data = GeberitProtocolSerializer.encode_with_cobs(write_request)
+            response_data = await self._send_frame_and_wait_response(frame_data)
+            return response_data is not None
+        except Exception as e:
+            _LOGGER.error("Failed to set orientation light sensor dependent to %s: %s", enabled, e)
+            return False
+            
+    async def set_orientation_light_ambient_dependent(self, enabled: bool) -> bool:
+        """Enable/disable ambient light-dependent activation (data point 46, Sela only)."""
+        try:
+            value = 1 if enabled else 0
+            write_request = GeberitProtocolSerializer.create_write_data_point_request(46, value)
+            frame_data = GeberitProtocolSerializer.encode_with_cobs(write_request)
+            response_data = await self._send_frame_and_wait_response(frame_data)
+            return response_data is not None
+        except Exception as e:
+            _LOGGER.error("Failed to set orientation light ambient dependent to %s: %s", enabled, e)
+            return False
+            
+    async def set_orientation_light_led_override(self, enabled: bool) -> bool:
+        """Enable/disable LED override control (data point 47, Sela only)."""
+        try:
+            value = 1 if enabled else 0
+            write_request = GeberitProtocolSerializer.create_write_data_point_request(47, value)
+            frame_data = GeberitProtocolSerializer.encode_with_cobs(write_request)
+            response_data = await self._send_frame_and_wait_response(frame_data)
+            return response_data is not None
+        except Exception as e:
+            _LOGGER.error("Failed to set orientation light LED override to %s: %s", enabled, e)
+            return False
+            
+    async def set_orientation_light_follow_up_time(self, seconds: int) -> bool:
+        """Set follow-up time in seconds (data point 50, Sela only)."""
+        try:
+            # Clamp to reasonable range
+            seconds = max(0, min(300, seconds))  # 0-300 seconds (5 minutes max)
+            write_request = GeberitProtocolSerializer.create_write_data_point_request(50, seconds)
+            frame_data = GeberitProtocolSerializer.encode_with_cobs(write_request)
+            response_data = await self._send_frame_and_wait_response(frame_data)
+            return response_data is not None
+        except Exception as e:
+            _LOGGER.error("Failed to set orientation light follow-up time to %d: %s", seconds, e)
+            return False
+            
+    async def set_orientation_light_sensor_distance(self, distance: int) -> bool:
+        """Set sensor distance setting (data point 51, Sela only)."""
+        try:
+            # Distance setting - check valid range dynamically via data point 52 if needed
+            distance = max(0, min(10, distance))  # Assume 0-10 range
+            write_request = GeberitProtocolSerializer.create_write_data_point_request(51, distance)
+            frame_data = GeberitProtocolSerializer.encode_with_cobs(write_request)
+            response_data = await self._send_frame_and_wait_response(frame_data)
+            return response_data is not None
+        except Exception as e:
+            _LOGGER.error("Failed to set orientation light sensor distance to %d: %s", distance, e)
+            return False
+            
+    async def set_orientation_light_sensor_sensitivity(self, sensitivity: int) -> bool:
+        """Set sensor sensitivity (data point 53, Sela only)."""
+        try:
+            # Sensitivity setting - check valid range dynamically via data point 54 if needed
+            sensitivity = max(0, min(10, sensitivity))  # Assume 0-10 range
+            write_request = GeberitProtocolSerializer.create_write_data_point_request(53, sensitivity)
+            frame_data = GeberitProtocolSerializer.encode_with_cobs(write_request)
+            response_data = await self._send_frame_and_wait_response(frame_data)
+            return response_data is not None
+        except Exception as e:
+            _LOGGER.error("Failed to set orientation light sensor sensitivity to %d: %s", sensitivity, e)
+            return False
+            
+    async def set_orientation_light_movement_sensor(self, enabled: bool) -> bool:
+        """Enable/disable movement sensor control (data point 55, Sela only)."""
+        try:
+            value = 1 if enabled else 0
+            write_request = GeberitProtocolSerializer.create_write_data_point_request(55, value)
+            frame_data = GeberitProtocolSerializer.encode_with_cobs(write_request)
+            response_data = await self._send_frame_and_wait_response(frame_data)
+            return response_data is not None
+        except Exception as e:
+            _LOGGER.error("Failed to set orientation light movement sensor to %s: %s", enabled, e)
+            return False
+            
+    async def set_orientation_light_ambient_sensitivity(self, sensitivity: int) -> bool:
+        """Set ambient light sensitivity (data point 56, Sela only)."""
+        try:
+            # Ambient sensitivity - check valid range dynamically via data point 57 if needed
+            sensitivity = max(0, min(10, sensitivity))  # Assume 0-10 range
+            write_request = GeberitProtocolSerializer.create_write_data_point_request(56, sensitivity)
+            frame_data = GeberitProtocolSerializer.encode_with_cobs(write_request)
+            response_data = await self._send_frame_and_wait_response(frame_data)
+            return response_data is not None
+        except Exception as e:
+            _LOGGER.error("Failed to set orientation light ambient sensitivity to %d: %s", sensitivity, e)
+            return False
+            
+    async def set_orientation_light_dark_threshold(self, threshold: int) -> bool:
+        """Set dark threshold setting (data point 58, Sela only)."""
+        try:
+            # Dark threshold - clamp to reasonable range
+            threshold = max(0, min(100, threshold))  # 0-100 range
+            write_request = GeberitProtocolSerializer.create_write_data_point_request(58, threshold)
+            frame_data = GeberitProtocolSerializer.encode_with_cobs(write_request)
+            response_data = await self._send_frame_and_wait_response(frame_data)
+            return response_data is not None
+        except Exception as e:
+            _LOGGER.error("Failed to set orientation light dark threshold to %d: %s", threshold, e)
+            return False
+        
     async def _write_data_point(self, data_point_id: int, value: int) -> bool:
         """Write a value to a specific data point."""
         try:
