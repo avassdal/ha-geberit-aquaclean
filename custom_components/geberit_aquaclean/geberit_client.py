@@ -18,9 +18,10 @@ from .protocol import (
 
 _LOGGER = logging.getLogger(__name__)
 
-# BLE communication characteristics
-WRITE_CHARACTERISTIC_UUID = "00002A24-0000-1000-8000-00805F9B34FB"
-NOTIFY_CHARACTERISTIC_UUID = "00002A25-0000-1000-8000-00805F9B34FB"
+# BLE communication characteristics - Geberit custom service
+# Service: 3334429d-90f3-4c41-a02d-5cb3a03e0000
+WRITE_CHARACTERISTIC_UUID = "3334429d-90f3-4c41-a02d-5cb3a33e0000"  # Write capability (Handle 8)
+NOTIFY_CHARACTERISTIC_UUID = "3334429d-90f3-4c41-a02d-5cb3a63e0000"  # Notify capability (Handle 18)
 
 # Response timeout for BLE commands (increased per HA best practices)
 RESPONSE_TIMEOUT = 10.0

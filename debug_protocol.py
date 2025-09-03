@@ -8,17 +8,27 @@ import asyncio
 import logging
 import binascii
 from bleak import BleakClient, BleakScanner
-from custom_components.geberit_aquaclean.protocol import GeberitProtocolSerializer
 
-# Configure detailed logging
+# For now, skip protocol import to focus on BLE discovery
+# We'll decode the basic frame structure manually
+# from custom_components.geberit_aquaclean.protocol import GeberitProtocolSerializer
+
+# Configure detailed logging to both console and file
+log_filename = f"geberit_debug_{asyncio.get_event_loop().time():.0f}.log"
 logging.basicConfig(
     level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(log_filename),
+        logging.StreamHandler()
+    ]
 )
 
-# BLE UUIDs (update these if they're wrong)
-WRITE_CHARACTERISTIC_UUID = "00002A24-0000-1000-8000-00805F9B34FB"
-NOTIFY_CHARACTERISTIC_UUID = "00002A25-0000-1000-8000-00805F9B34FB"
+print(f"Debug output will be saved to: {log_filename}")
+
+# BLE UUIDs - Geberit custom service discovered
+WRITE_CHARACTERISTIC_UUID = "3334429d-90f3-4c41-a02d-5cb3a33e0000"  # Write capability (Handle 8)
+NOTIFY_CHARACTERISTIC_UUID = "3334429d-90f3-4c41-a02d-5cb3a63e0000"  # Notify capability (Handle 18)
 
 class ProtocolDebugger:
     def __init__(self, mac_address: str):
@@ -52,13 +62,29 @@ class ProtocolDebugger:
             print(f"  Description: {service.description}")
             
             for char in service.characteristics:
-                props = [p.name for p in char.properties]
+                # Handle different property formats
+                try:
+                    if hasattr(char.properties[0], 'name'):
+                        props = [p.name for p in char.properties]
+                        readable = "read" in [p.name.lower() for p in char.properties]
+                        notifiable = "notify" in [p.name.lower() for p in char.properties]
+                    else:
+                        props = list(char.properties)
+                        readable = "read" in char.properties
+                        notifiable = "notify" in char.properties
+                except (IndexError, AttributeError):
+                    props = str(char.properties)
+                    readable = "read" in str(char.properties).lower()
+                    notifiable = "notify" in str(char.properties).lower()
+                
                 print(f"  Characteristic: {char.uuid}")
                 print(f"    Properties: {props}")
                 print(f"    Handle: {char.handle}")
+                if notifiable:
+                    print("    -> NOTIFY CAPABLE!")
                 
                 # Try to read characteristic if readable
-                if "read" in [p.name.lower() for p in char.properties]:
+                if readable:
                     try:
                         value = await self.client.read_gatt_char(char.uuid)
                         hex_value = binascii.hexlify(value).decode('ascii')
@@ -79,15 +105,19 @@ class ProtocolDebugger:
             'timestamp': asyncio.get_event_loop().time()
         })
         
-        # Try to decode with protocol
+        # Basic frame analysis (without protocol import)
         try:
-            frame = GeberitProtocolSerializer.decode_from_cobs(data)
-            if frame:
-                print(f"  Decoded frame: {frame}")
+            # Simple COBS detection - look for 0x00 delimiter
+            if data and data[-1] == 0x00:
+                print("  Possible COBS frame (ends with 0x00)")
             else:
-                print("  Failed to decode frame")
+                print("  Raw data frame")
+            
+            # Look for common patterns
+            if len(data) > 0:
+                print(f"  First byte: 0x{data[0]:02x}, Last byte: 0x{data[-1]:02x}")
         except Exception as e:
-            print(f"  Decode error: {e}")
+            print(f"  Analysis error: {e}")
             
     async def setup_notifications(self):
         """Setup notifications on target characteristic."""
@@ -100,10 +130,20 @@ class ProtocolDebugger:
             print(f"Failed to setup notifications: {e}")
             
             # Try to find notify-capable characteristics
-            print("Looking for alternative notify characteristics...")
+            notify_chars = []
             for service in self.client.services:
                 for char in service.characteristics:
-                    if "notify" in [p.name.lower() for p in char.properties]:
+                    # Handle different property formats
+                    try:
+                        if hasattr(char.properties[0], 'name'):
+                            notifiable = "notify" in [p.name.lower() for p in char.properties]
+                        else:
+                            notifiable = "notify" in char.properties
+                    except (IndexError, AttributeError):
+                        notifiable = "notify" in str(char.properties).lower()
+                    
+                    if notifiable:
+                        notify_chars.append(str(char.uuid))
                         print(f"  Found notify characteristic: {char.uuid}")
             return False
             
