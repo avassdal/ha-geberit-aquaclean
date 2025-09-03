@@ -14,28 +14,6 @@ from .entity import GeberitAquaCleanEntity
 
 _LOGGER = logging.getLogger(__name__)
 
-SENSORS: tuple[SensorEntityDescription, ...] = (
-    SensorEntityDescription(
-        key="power_consumption",
-        name="Power Consumption",
-        icon="mdi:lightning-bolt",
-        native_unit_of_measurement=UnitOfPower.WATT,
-        suggested_display_precision=1,
-    ),
-    SensorEntityDescription(
-        key="water_pressure",
-        name="Water Pressure",
-        icon="mdi:water-pump",
-        native_unit_of_measurement=UnitOfPressure.BAR,
-        suggested_display_precision=2,
-    ),
-    SensorEntityDescription(
-        key="active_user_profile",
-        name="Active User Profile",
-        icon="mdi:account-circle",
-    ),
-)
-
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -44,11 +22,45 @@ async def async_setup_entry(
 ) -> None:
     """Set up Geberit AquaClean sensor entities."""
     coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
-
-    entities = [
-        GeberitAquaCleanSensorEntity(coordinator, description) 
-        for description in SENSORS
+    client = hass.data[DOMAIN][entry.entry_id]["client"]
+    
+    # Define sensor configurations with their feature requirements
+    sensor_configs = [
+        {
+            "description": SensorEntityDescription(
+                key="power_consumption",
+                name="Power Consumption",
+                icon="mdi:lightning-bolt",
+                native_unit_of_measurement=UnitOfPower.WATT,
+                suggested_display_precision=1,
+            ),
+            "features": ["power_monitoring"],
+        },
+        {
+            "description": SensorEntityDescription(
+                key="water_pressure",
+                name="Water Pressure",
+                icon="mdi:water-pump",
+                native_unit_of_measurement=UnitOfPressure.BAR,
+                suggested_display_precision=2,
+            ),
+            "features": ["water_pressure_sensor"],
+        },
+        {
+            "description": SensorEntityDescription(
+                key="active_user_profile",
+                name="Active User Profile",
+                icon="mdi:account-circle",
+            ),
+            "features": ["user_profiles"],
+        },
     ]
+
+    # Only create entities for features that are available on this device
+    entities = []
+    for config in sensor_configs:
+        if any(client.has_feature(feature) for feature in config["features"]):
+            entities.append(GeberitAquaCleanSensorEntity(coordinator, config["description"]))
 
     async_add_entities(entities)
 

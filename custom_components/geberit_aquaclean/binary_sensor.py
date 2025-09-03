@@ -17,55 +17,81 @@ async def async_setup_entry(
 ) -> None:
     """Set up the binary sensor platform."""
     coordinator = hass.data[DOMAIN][config_entry.entry_id]["coordinator"]
+    client = hass.data[DOMAIN][config_entry.entry_id]["client"]
     
-    BINARY_SENSORS: tuple[BinarySensorEntityDescription, ...] = (
-        BinarySensorEntityDescription(
-            key="user_is_sitting",
-            name="User Present",
-            icon="mdi:account-check",
-            device_class=BinarySensorDeviceClass.OCCUPANCY,
-        ),
-        BinarySensorEntityDescription(
-            key="anal_shower_running",
-            name="Rear Wash Active",
-            icon="mdi:shower",
-            device_class=BinarySensorDeviceClass.RUNNING,
-        ),
-        BinarySensorEntityDescription(
-            key="lady_shower_running", 
-            name="Front Wash Active",
-            icon="mdi:shower-head",
-            device_class=BinarySensorDeviceClass.RUNNING,
-        ),
-        BinarySensorEntityDescription(
-            key="dryer_running",
-            name="Air Dry Active",
-            icon="mdi:air-purifier",
-            device_class=BinarySensorDeviceClass.RUNNING,
-        ),
-        BinarySensorEntityDescription(
-            key="lid_position",
-            name="Lid Open",
-            icon="mdi:toilet",
-            device_class=BinarySensorDeviceClass.OPENING,
-        ),
-        BinarySensorEntityDescription(
-            key="descaling_needed",
-            name="Descaling Required",
-            icon="mdi:alert-circle",
-            device_class=BinarySensorDeviceClass.PROBLEM,
-        ),
-        BinarySensorEntityDescription(
-            key="filter_replacement_needed",
-            name="Filter Replacement Required",
-            icon="mdi:air-filter",
-            device_class=BinarySensorDeviceClass.PROBLEM,
-        ),
-    )
-    
-    entities = [
-        GeberitBinarySensor(coordinator, description) for description in BINARY_SENSORS
+    # Define all possible binary sensors with their feature requirements
+    BINARY_SENSOR_CONFIGS = [
+        {
+            "description": BinarySensorEntityDescription(
+                key="user_is_sitting",
+                name="User Present",
+                icon="mdi:account-check",
+                device_class=BinarySensorDeviceClass.OCCUPANCY,
+            ),
+            "features": ["user_detection"],  # Always available on all models
+        },
+        {
+            "description": BinarySensorEntityDescription(
+                key="anal_shower_running",
+                name="Rear Wash Active",
+                icon="mdi:shower",
+                device_class=BinarySensorDeviceClass.RUNNING,
+            ),
+            "features": ["rear_wash"],
+        },
+        {
+            "description": BinarySensorEntityDescription(
+                key="lady_shower_running", 
+                name="Front Wash Active",
+                icon="mdi:shower-head",
+                device_class=BinarySensorDeviceClass.RUNNING,
+            ),
+            "features": ["lady_wash"],
+        },
+        {
+            "description": BinarySensorEntityDescription(
+                key="dryer_running",
+                name="Air Dry Active",
+                icon="mdi:air-purifier",
+                device_class=BinarySensorDeviceClass.RUNNING,
+            ),
+            "features": ["dryer"],
+        },
+        {
+            "description": BinarySensorEntityDescription(
+                key="lid_position",
+                name="Lid Open",
+                icon="mdi:toilet",
+                device_class=BinarySensorDeviceClass.OPENING,
+            ),
+            "features": ["lid_sensor"],
+        },
+        {
+            "description": BinarySensorEntityDescription(
+                key="descaling_needed",
+                name="Descaling Required",
+                icon="mdi:alert-circle",
+                device_class=BinarySensorDeviceClass.PROBLEM,
+            ),
+            "features": ["descaling_system"],
+        },
+        {
+            "description": BinarySensorEntityDescription(
+                key="filter_replacement_needed",
+                name="Filter Replacement Required",
+                icon="mdi:air-filter",
+                device_class=BinarySensorDeviceClass.PROBLEM,
+            ),
+            "features": ["water_filter"],
+        },
     ]
+    
+    # Only create entities for features that are available on this device
+    entities = []
+    for config in BINARY_SENSOR_CONFIGS:
+        # Check if any of the required features are available
+        if any(client.has_feature(feature) for feature in config["features"]):
+            entities.append(GeberitBinarySensor(coordinator, config["description"]))
     
     async_add_entities(entities)
 

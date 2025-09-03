@@ -24,12 +24,31 @@ async def async_setup_entry(
     coordinator = hass.data[DOMAIN][config_entry.entry_id]["coordinator"]
     client = hass.data[DOMAIN][config_entry.entry_id]["client"]
     
-    entities = [
-        GeberitLidSwitch(coordinator, client),
-        GeberitRearWashSwitch(coordinator, client),
-        GeberitFrontWashSwitch(coordinator, client),
-        GeberitDryerSwitch(coordinator, client),
+    # Define switch configurations with their feature requirements
+    switch_configs = [
+        {
+            "class": GeberitLidSwitch,
+            "features": ["lid_control"],  # Available on models with motorized lid
+        },
+        {
+            "class": GeberitRearWashSwitch,
+            "features": ["rear_wash"],  # Standard feature on all models
+        },
+        {
+            "class": GeberitFrontWashSwitch,
+            "features": ["lady_wash"],  # Available on most models
+        },
+        {
+            "class": GeberitDryerSwitch,
+            "features": ["dryer"],  # Available on most models
+        },
     ]
+    
+    # Only create entities for features that are available on this device
+    entities = []
+    for config in switch_configs:
+        if any(client.has_feature(feature) for feature in config["features"]):
+            entities.append(config["class"](coordinator, client))
     
     async_add_entities(entities)
 
