@@ -10,5 +10,5 @@
     "issue_tracker": "https://github.com/schmidtfx/ha-geberit-aquaclean/issues",
     "loggers": ["pygeberit"],
     "requirements": ["bleak>=1.0.1", "bleak-retry-connector>=3.1.0"],
-    "version": "0.1.7"
+    "version": "0.1.8"
 }
