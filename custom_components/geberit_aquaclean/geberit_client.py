@@ -146,9 +146,23 @@ class GeberitAquaCleanClient:
                 for service in self._client.services:
                     _LOGGER.info("Service: %s (%s)", service.uuid, service.description or "Unknown")
                     for char in service.characteristics:
-                        props = [p.name for p in char.properties]
+                        # Handle both string and object properties
+                        props = []
+                        for p in char.properties:
+                            if hasattr(p, 'name'):
+                                props.append(p.name)
+                            else:
+                                props.append(str(p))
                         _LOGGER.info("  Char: %s - Properties: %s", char.uuid, props)
-                        if "notify" in [p.name.lower() for p in char.properties]:
+                        
+                        # Check for notify capability
+                        notify_capable = False
+                        for p in char.properties:
+                            prop_name = p.name if hasattr(p, 'name') else str(p)
+                            if prop_name.lower() == "notify":
+                                notify_capable = True
+                                break
+                        if notify_capable:
                             _LOGGER.info("    -> NOTIFY capable characteristic found!")
             
             if DEBUG_MODE:
@@ -162,7 +176,14 @@ class GeberitAquaCleanClient:
             notify_chars = []
             for service in self._client.services:
                 for char in service.characteristics:
-                    if "notify" in [p.name.lower() for p in char.properties]:
+                    # Handle both string and object properties
+                    notify_capable = False
+                    for p in char.properties:
+                        prop_name = p.name if hasattr(p, 'name') else str(p)
+                        if prop_name.lower() == "notify":
+                            notify_capable = True
+                            break
+                    if notify_capable:
                         notify_chars.append(str(char.uuid))
             
             if notify_chars:
