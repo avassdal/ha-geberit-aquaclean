@@ -297,8 +297,8 @@ class GeberitAquaCleanClient:
         }
         
         # Update available features using model-based detection
-        if device_id and device_id.sap_number:
-            features = self._determine_features_from_sap_number(device_id.sap_number)
+        if hasattr(self, '_device_identification') and self._device_identification and self._device_identification.sap_number:
+            features = self._determine_features_from_sap_number(self._device_identification.sap_number)
             
             # Reset features and apply model-based detection
             self.available_features.clear()
@@ -335,62 +335,80 @@ class GeberitAquaCleanClient:
             'power_management'        # Basic power status
         ])
         
-        # Model-specific features based on SAP number patterns
-        if any(pattern in sap_number for pattern in ['146.016', '146.017', '146.018', '146.019']):
-            # Sela models (top-tier) - full feature set
-            _LOGGER.info("Detected Sela model from SAP %s", sap_number)
-            features.update([
-                'anal_shower',           # Anal shower function
-                'lady_shower',           # Lady shower function  
-                'dryer',                 # Air dryer
-                'spray_controls',        # Spray intensity/position
-                'oscillating_spray',     # Oscillating spray mode
-                'mood_lighting',         # Advanced lighting modes
-                'auto_flush',            # Automatic flush
-                'light_sensor',          # Ambient light sensor
-                'ambient_light',         # Ambient light control
-                'descaling_status',      # Descaling maintenance
-                'filter_status',         # Filter replacement
-                'night_light',           # Night lighting
-                'time_controls'          # Time-based functions
-            ])
-        elif any(pattern in sap_number for pattern in ['146.012', '146.013', '146.014', '146.015']):
-            # Mera models (mid-tier)
-            _LOGGER.info("Detected Mera model from SAP %s", sap_number)
-            features.update([
-                'anal_shower',
-                'lady_shower', 
-                'dryer',
-                'spray_controls',
-                'auto_flush',
-                'descaling_status',
-                'night_light'
-            ])
-        elif any(pattern in sap_number for pattern in ['146.010', '146.011']):
-            # Basic models (entry-level)
-            _LOGGER.info("Detected basic model from SAP %s", sap_number)
-            features.update([
-                'anal_shower',
-                'lady_shower',
-                'dryer',
-                'descaling_status'
-            ])
-        else:
-            # Unknown model - assume basic functionality to avoid issues
-            _LOGGER.warning("Unknown SAP number %s, assuming basic features", sap_number)
-            features.update([
-                'anal_shower',
-                'lady_shower', 
-                'dryer'
-            ])
-            
-        _LOGGER.info("Model-based feature detection for SAP %s: %d features available", 
-                    sap_number, len(features))
-        _LOGGER.debug("Available features: %s", sorted(features))
-        return features
+        # Extract numeric part from SAP number for pattern matching
+        sap_numeric = ''.join(filter(str.isdigit, sap_number))
         
+        if sap_numeric:
+            # Convert to int for range checks
+            try:
+                sap_int = int(sap_numeric)
+                _LOGGER.info("Processing SAP number: %s -> %d", sap_number, sap_int)
+                
+                # Handle various SAP number formats
+                # Sela models (high-end): SAP 5168+ or 146.016+
+                if sap_int >= 5168 or (146016 <= sap_int <= 146019):
+                    _LOGGER.info("Detected Sela model based on SAP %d", sap_int)
+                    features.update([
+                        'lady_shower',         # Front wash
+                        'anal_shower',        # Rear wash  
+                        'dryer',              # Warm air dryer
+                        'night_light',        # RGB night light
+                        'mood_lighting',      # Advanced lighting controls
+                        'spray_intensity',    # Adjustable spray pressure
+                        'spray_position',     # Spray positioning
+                        'oscillating_spray',  # Oscillating function
+                        'user_profiles',      # Multiple user settings
+                        'descaling_system',   # Automatic descaling
+                        'filter_monitoring',  # Water filter status
+                        'auto_flush',         # Automatic flushing
+                        'barrier_free_mode',  # Accessibility features
+                        'sensor_controls',    # Advanced sensor features
+                        'ambient_lighting'    # Ambient light controls
+                    ])
+                    
+                # Mera models (mid-tier): SAP 5100-5167 or 146.012-146.015
+                elif (5100 <= sap_int <= 5167) or (146012 <= sap_int <= 146015):
+                    _LOGGER.info("Detected Mera model based on SAP %d", sap_int)
+                    features.update([
+                        'lady_shower',        # Front wash
+                        'anal_shower',       # Rear wash
+                        'dryer',             # Warm air dryer
+                        'night_light',       # Basic lighting
+                        'spray_intensity',   # Adjustable spray
+                        'descaling_system',  # Descaling alerts
+                        'filter_monitoring'  # Filter status
+                    ])
+                    
+                # Basic AquaClean models: SAP 5000-5099 or 146.010-146.011
+                elif (5000 <= sap_int <= 5099) or (146010 <= sap_int <= 146011):
+                    _LOGGER.info("Detected basic AquaClean model based on SAP %d", sap_int)
+                    features.update([
+                        'lady_shower',       # Front wash
+                        'anal_shower',      # Rear wash
+                        'basic_controls'    # Basic operation
+                    ])
+                    
+                # Any AquaClean model (fallback)
+                else:
+                    _LOGGER.info("Unknown SAP pattern %d, assuming AquaClean with basic features", sap_int)
+                    features.update([
+                        'lady_shower',
+                        'anal_shower', 
+                        'basic_controls'
+                    ])
+                    
+            except ValueError:
+                _LOGGER.warning("Could not parse SAP number for feature detection: %s", sap_number)
+        
+        # If no specific model match, assume basic feature set
+        if len(features) <= 6:  # Only base features
+            _LOGGER.info("Unknown model, assuming basic AquaClean features")
+            features.update(['lady_shower', 'anal_shower', 'basic_controls'])
+            
+        return features
+                   
     def has_feature(self, feature_name: str) -> bool:
-        """Check if a specific feature is available on this device."""
+        """Check if a specific feature is available on this device model."""
         return self.available_features.get(feature_name, False)
         
     def get_available_features(self) -> list[str]:
