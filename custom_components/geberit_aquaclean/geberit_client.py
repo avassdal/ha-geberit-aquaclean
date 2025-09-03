@@ -214,8 +214,7 @@ class GeberitAquaCleanClient:
             # Parse frame from received data  
             frame = GeberitProtocolSerializer.decode_from_cobs(data)
             if frame:
-                _LOGGER.debug("Successfully decoded frame: type=%s, length=%d", 
-                             getattr(frame, 'frame_type', 'unknown'), len(data))
+                _LOGGER.debug("Successfully decoded frame: length=%d", len(data))
                 # Add frame to collector
                 if self._frame_collector.add_frame(frame):
                     # Complete message received
