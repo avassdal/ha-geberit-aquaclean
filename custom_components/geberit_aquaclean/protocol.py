@@ -486,6 +486,20 @@ class GeberitProtocolSerializer:
         )
     
     @staticmethod
+    def create_read_data_point_request(data_point_id: int) -> BLEFrame:
+        """Create a data point read request by ID for feature discovery."""
+        # Data point read request using direct ID
+        payload = struct.pack('<HB', data_point_id, 0x00)  # DP ID + read flag
+        
+        return BLEFrame(
+            frame_id=BLEFrameType.SINGLE_START_FRAME.value,
+            has_msg_type=True,
+            transaction=1,
+            flag=0,
+            payload=payload
+        )
+    
+    @staticmethod
     def create_data_point_write(data_point: DataPoint, value: bytes) -> BLEFrame:
         """Create a data point write request."""
         # Data point write request
@@ -602,6 +616,38 @@ class GeberitProtocolSerializer:
             
         except Exception as e:
             _LOGGER.warning("Failed to parse system status response: %s", e)
+            return SystemParameters()
+    
+    @staticmethod
+    def parse_device_notification(data: bytes) -> SystemParameters:
+        """Parse device status notifications (e.g., 30140c030003000000003130001200cf08)."""
+        try:
+            params = SystemParameters()
+            
+            if not data or len(data) < 16:
+                return params
+                
+            # Parse the notification data structure
+            # Based on observed pattern: 30140c030003000000003130001200cf08
+            status_flags = struct.unpack('<HH', data[4:8])  # 00 03, 00 00
+            
+            # Extract status information from flags
+            # This is speculative based on typical device status patterns
+            main_status = status_flags[0] & 0xFF
+            params.user_is_sitting = bool(main_status & 0x01)
+            params.anal_shower_running = bool(main_status & 0x02)
+            params.lady_shower_running = bool(main_status & 0x04)
+            params.dryer_running = bool(main_status & 0x08)
+            
+            # Additional status from secondary flags
+            extended_status = (status_flags[1] >> 8) & 0xFF
+            params.descaling_needed = bool(extended_status & 0x01)
+            params.filter_replacement_needed = bool(extended_status & 0x02)
+            
+            return params
+            
+        except Exception as e:
+            _LOGGER.debug("Failed to parse device notification: %s", e)
             return SystemParameters()
         
     @staticmethod

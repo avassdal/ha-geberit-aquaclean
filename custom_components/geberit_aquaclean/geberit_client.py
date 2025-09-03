@@ -9,11 +9,12 @@ from bleak_retry_connector import establish_connection
 from homeassistant.components import bluetooth
 from homeassistant.core import HomeAssistant
 from .protocol import (
-    BLEFrameCollector,
     GeberitProtocolSerializer,
     DeviceIdentification,
+    BLEFrameCollector,
+    DataPoint,
+    SystemParameters,
     HighLevelCommand,
-    DataPoint
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -236,13 +237,17 @@ class GeberitAquaCleanClient:
                 _LOGGER.debug("Successfully decoded frame: length=%d", len(data))
                 # Add frame to collector
                 if self._frame_collector.add_frame(frame):
-                    # Complete message received
                     message_data = self._frame_collector.get_complete_message()
                     if message_data:
                         _LOGGER.debug("Complete message assembled: %s", 
                                      binascii.hexlify(message_data).decode('ascii'))
                         self._last_response_data = message_data
                         self._response_event.set()
+                        
+                        # Parse status notifications for live updates
+                        status_params = GeberitProtocolSerializer.parse_device_notification(message_data)
+                        if status_params:
+                            self._update_device_state_from_notification(status_params)
                 else:
                     _LOGGER.debug("Frame added to collector, waiting for more frames")
             else:
@@ -1063,3 +1068,22 @@ class GeberitAquaCleanClient:
         except Exception as ex:
             _LOGGER.error("Failed to toggle barrier-free mode: %s", ex)
             return False
+
+    def _update_device_state_from_notification(self, status_params: SystemParameters):
+        """Update device state from parsed notification data."""
+        try:
+            # Update the device state with new status information
+            if self._device_state:
+                self._device_state.system_params = status_params
+                _LOGGER.debug("Device state updated from notification: sitting=%s, anal_shower=%s, lady_shower=%s, dryer=%s",
+                             status_params.user_is_sitting,
+                             status_params.anal_shower_running, 
+                             status_params.lady_shower_running,
+                             status_params.dryer_running)
+                
+                # Trigger coordinator update if available
+                if hasattr(self, '_coordinator') and self._coordinator:
+                    self._coordinator.async_set_updated_data(self._device_state)
+                    
+        except Exception as e:
+            _LOGGER.error("Failed to update device state from notification: %s", e)
