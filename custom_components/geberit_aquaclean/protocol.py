@@ -396,53 +396,53 @@ class SystemParameters:
     active_user_profile: int = 1  # 1-4
 
 class BLEFrameCollector:
-    """Collects and assembles protocol frames into complete messages."""
+    """Collects and assembles BLE frames into complete messages."""
     
     def __init__(self):
         """Initialize frame collector."""
-        self._pending_frames: Dict[int, List[ProtocolFrame]] = {}
+        self._pending_frames: Dict[int, List[BLEFrame]] = {}
         self._complete_messages: List[bytes] = []
         
-    def add_frame(self, frame: ProtocolFrame) -> bool:
+    def add_frame(self, frame: BLEFrame) -> bool:
         """Add a frame to the collector.
         
         Returns:
             True if a complete message was assembled
         """
-        frame_type = frame.frame_type
+        frame_id = frame.frame_id
         
-        if frame_type not in self._pending_frames:
-            self._pending_frames[frame_type] = []
+        # For single frames, immediately add to complete messages
+        if frame_id == BLEFrameType.SINGLE_START_FRAME.value:
+            self._complete_messages.append(frame.payload)
+            return True
             
-        self._pending_frames[frame_type].append(frame)
+        # For multi-frame messages, collect and assemble
+        if frame_id not in self._pending_frames:
+            self._pending_frames[frame_id] = []
+            
+        self._pending_frames[frame_id].append(frame)
         
         # Check if we have a complete message
-        if frame.is_last_frame or frame.sequence_number == 0:
-            return self._try_assemble_message(frame_type)
+        if frame_id == BLEFrameType.CONSECUTIVE_FRAME.value:
+            return self._try_assemble_message(frame_id)
             
         return False
         
-    def _try_assemble_message(self, frame_type: int) -> bool:
+    def _try_assemble_message(self, frame_id: int) -> bool:
         """Try to assemble a complete message from frames."""
-        if frame_type not in self._pending_frames:
+        if frame_id not in self._pending_frames:
             return False
             
-        frames = self._pending_frames[frame_type]
-        frames.sort(key=lambda f: f.sequence_number)
+        frames = self._pending_frames[frame_id]
+        frames.sort(key=lambda f: f.transaction)
         
-        # Check for complete sequence
-        expected_seq = 0
-        for frame in frames:
-            if frame.sequence_number != expected_seq:
-                return False
-            expected_seq += 1
-            
-        # Assemble message
-        message_data = b''.join(frame.data for frame in frames)
+        # For now, just concatenate all payloads
+        # TODO: Implement proper multi-frame assembly when needed
+        message_data = b''.join(frame.payload for frame in frames)
         self._complete_messages.append(message_data)
         
         # Clear pending frames for this type
-        del self._pending_frames[frame_type]
+        del self._pending_frames[frame_id]
         
         _LOGGER.debug("Assembled complete message of %d bytes", len(message_data))
         return True

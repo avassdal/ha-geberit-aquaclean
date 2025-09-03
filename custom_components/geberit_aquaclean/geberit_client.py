@@ -98,6 +98,7 @@ class GeberitAquaCleanClient:
         self._frame_collector = BLEFrameCollector()
         self._response_event = asyncio.Event()
         self._last_response_data: Optional[bytes] = None
+        self.available_features = {}
         
     async def connect(self) -> bool:
         """Connect to the device using Home Assistant Bluetooth best practices."""
