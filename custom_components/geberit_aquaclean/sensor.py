@@ -9,7 +9,6 @@ from homeassistant.const import UnitOfPower, UnitOfPressure
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from . import GeberitAquaCleanCoordinator
 from .const import DOMAIN
 from .entity import GeberitAquaCleanEntity
 
@@ -44,7 +43,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Geberit AquaClean sensor entities."""
-    coordinator: GeberitAquaCleanCoordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
 
     entities = [
         GeberitAquaCleanSensorEntity(coordinator, description) 
@@ -59,15 +58,17 @@ class GeberitAquaCleanSensorEntity(GeberitAquaCleanEntity, SensorEntity):
 
     def __init__(
         self,
-        coordinator: GeberitAquaCleanCoordinator,
+        coordinator,
         description: SensorEntityDescription,
     ) -> None:
         """Initialize the sensor entity."""
         super().__init__(coordinator, description.key)
         self.entity_description = description
-        self._attr_name = f"{coordinator.client.device_name} {description.name}"
+        self._attr_name = f"{description.name}"
 
     @property
     def native_value(self) -> float | str | None:
         """Return the current value."""
-        return getattr(self.coordinator.client.device_state, self.entity_description.key, None)
+        if self.coordinator.data is None:
+            return None
+        return getattr(self.coordinator.data, self.entity_description.key, None)

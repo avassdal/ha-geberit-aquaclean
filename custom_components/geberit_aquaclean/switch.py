@@ -47,10 +47,10 @@ class GeberitLidSwitch(CoordinatorEntity, SwitchEntity):
 
     @property
     def is_on(self) -> bool | None:
-        """Return true if the lid is open."""
+        """Return true if the switch is on."""
         if self.coordinator.data is None:
             return None
-        return self.coordinator.data.lid_position
+        return getattr(self.coordinator.data, "lid_open", False)
 
     @property
     def available(self) -> bool:
@@ -58,17 +58,17 @@ class GeberitLidSwitch(CoordinatorEntity, SwitchEntity):
         return (
             self.coordinator.last_update_success 
             and self.coordinator.data is not None 
-            and self.coordinator.data.connected
+            and getattr(self.coordinator.data, "connected", False)
         )
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the lid switch on (open lid)."""
-        if self.coordinator.data and not self.coordinator.data.lid_position:
+        if self.coordinator.data and not getattr(self.coordinator.data, "lid_open", False):
             await self._toggle_lid()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the lid switch off (close lid)."""
-        if self.coordinator.data and self.coordinator.data.lid_position:
+        if self.coordinator.data and getattr(self.coordinator.data, "lid_open", False):
             await self._toggle_lid()
 
     async def _toggle_lid(self) -> None:
@@ -114,7 +114,7 @@ class GeberitRearWashSwitch(CoordinatorEntity, SwitchEntity):
         """Return true if rear wash is running."""
         if self.coordinator.data is None:
             return None
-        return self.coordinator.data.anal_shower_running
+        return getattr(self.coordinator.data, "anal_shower_running", False)
 
     @property
     def available(self) -> bool:
@@ -122,7 +122,7 @@ class GeberitRearWashSwitch(CoordinatorEntity, SwitchEntity):
         return (
             self.coordinator.last_update_success 
             and self.coordinator.data is not None 
-            and self.coordinator.data.connected
+            and getattr(self.coordinator.data, "connected", False)
         )
 
     async def async_turn_on(self, **kwargs: Any) -> None:
@@ -178,7 +178,7 @@ class GeberitFrontWashSwitch(CoordinatorEntity, SwitchEntity):
         """Return true if front wash is running."""
         if self.coordinator.data is None:
             return None
-        return self.coordinator.data.lady_shower_running
+        return getattr(self.coordinator.data, "lady_shower_running", False)
 
     @property
     def available(self) -> bool:
@@ -186,7 +186,7 @@ class GeberitFrontWashSwitch(CoordinatorEntity, SwitchEntity):
         return (
             self.coordinator.last_update_success 
             and self.coordinator.data is not None 
-            and self.coordinator.data.connected
+            and getattr(self.coordinator.data, "connected", False)
         )
 
     async def async_turn_on(self, **kwargs: Any) -> None:
@@ -242,7 +242,7 @@ class GeberitDryerSwitch(CoordinatorEntity, SwitchEntity):
         """Return true if dryer is running."""
         if self.coordinator.data is None:
             return None
-        return self.coordinator.data.dryer_running
+        return getattr(self.coordinator.data, "dryer_running", False)
 
     @property
     def available(self) -> bool:
@@ -250,7 +250,7 @@ class GeberitDryerSwitch(CoordinatorEntity, SwitchEntity):
         return (
             self.coordinator.last_update_success 
             and self.coordinator.data is not None 
-            and self.coordinator.data.connected
+            and getattr(self.coordinator.data, "connected", False)
         )
 
     async def async_turn_on(self, **kwargs: Any) -> None:

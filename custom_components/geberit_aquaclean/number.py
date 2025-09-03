@@ -9,7 +9,6 @@ from homeassistant.const import UnitOfTemperature
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from . import GeberitAquaCleanCoordinator
 from .const import DOMAIN
 from .entity import GeberitAquaCleanEntity
 
@@ -58,10 +57,11 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Geberit AquaClean number entities."""
-    coordinator: GeberitAquaCleanCoordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
+    client = hass.data[DOMAIN][entry.entry_id]["client"]
 
     entities = [
-        GeberitAquaCleanNumberEntity(coordinator, description) 
+        GeberitAquaCleanNumberEntity(coordinator, client, description) 
         for description in NUMBERS
     ]
 
@@ -73,18 +73,22 @@ class GeberitAquaCleanNumberEntity(GeberitAquaCleanEntity, NumberEntity):
 
     def __init__(
         self,
-        coordinator: GeberitAquaCleanCoordinator,
+        coordinator,
+        client,
         description: NumberEntityDescription,
     ) -> None:
         """Initialize the number entity."""
         super().__init__(coordinator, description.key)
+        self._client = client
         self.entity_description = description
-        self._attr_name = f"{coordinator.client.device_name} {description.name}"
+        self._attr_name = f"{description.name}"
 
     @property
     def native_value(self) -> float | None:
         """Return the current value."""
-        return getattr(self.coordinator.client.device_state, self.entity_description.key, None)
+        if self.coordinator.data is None:
+            return None
+        return getattr(self.coordinator.data, self.entity_description.key, None)
 
     async def async_set_native_value(self, value: float) -> None:
         """Set the value."""
@@ -93,13 +97,13 @@ class GeberitAquaCleanNumberEntity(GeberitAquaCleanEntity, NumberEntity):
             int_value = int(value)
             
             if self.entity_description.key == "water_temperature":
-                await self.coordinator.client.set_water_temperature(int_value)
+                await self._client.set_water_temperature(int_value)
             elif self.entity_description.key == "spray_intensity":
-                await self.coordinator.client.set_spray_intensity(int_value)
+                await self._client.set_spray_intensity(int_value)
             elif self.entity_description.key == "spray_position":
-                await self.coordinator.client.set_spray_position(int_value)
+                await self._client.set_spray_position(int_value)
             elif self.entity_description.key == "active_user_profile":
-                await self.coordinator.client.set_user_profile(int_value)
+                await self._client.set_user_profile(int_value)
                 
             # Trigger a coordinator refresh to update the state
             await self.coordinator.async_request_refresh()

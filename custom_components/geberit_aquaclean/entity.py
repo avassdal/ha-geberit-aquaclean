@@ -3,14 +3,13 @@ from __future__ import annotations
 
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from . import GeberitAquaCleanCoordinator
 from .const import DOMAIN
 
 
 class GeberitAquaCleanEntity(CoordinatorEntity):
     """Base entity for Geberit AquaClean devices."""
 
-    def __init__(self, coordinator: GeberitAquaCleanCoordinator, key: str) -> None:
+    def __init__(self, coordinator, key: str) -> None:
         """Initialize the entity."""
         super().__init__(coordinator)
         self._key = key
@@ -21,14 +20,14 @@ class GeberitAquaCleanEntity(CoordinatorEntity):
         """Return True if entity is available."""
         return (
             self.coordinator.last_update_success 
-            and self.coordinator.client.device_state is not None 
-            and self.coordinator.client.device_state.connected
+            and self.coordinator.data is not None 
+            and getattr(self.coordinator.data, "connected", False)
         )
 
     @property
     def device_info(self):
         """Return device information."""
-        device_data = self.coordinator.client.device_state
+        device_data = self.coordinator.data
         return {
             "identifiers": {(DOMAIN, self.coordinator.client.mac_address)},
             "name": getattr(device_data, "description", "Geberit AquaClean") if device_data else "Geberit AquaClean",

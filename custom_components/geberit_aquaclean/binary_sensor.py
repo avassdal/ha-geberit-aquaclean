@@ -73,30 +73,21 @@ async def async_setup_entry(
 class GeberitBinarySensor(CoordinatorEntity, BinarySensorEntity):
     """Representation of a Geberit AquaClean binary sensor."""
 
-    def __init__(self, coordinator, sensor_key: str, name: str, device_class: BinarySensorDeviceClass):
+    def __init__(self, coordinator, description: BinarySensorEntityDescription):
         """Initialize the binary sensor."""
         super().__init__(coordinator)
-        self._sensor_key = sensor_key
-        self._attr_name = f"{name}"
-        self._attr_unique_id = f"geberit_aquaclean_{sensor_key}_{coordinator.client.mac_address.replace(':', '')}"
-        self._attr_device_class = device_class
-        
-        # Add entity icons for better UX
-        icon_map = {
-            "user_is_sitting": "mdi:human",
-            "anal_shower_running": "mdi:shower",
-            "lady_shower_running": "mdi:shower-head",
-            "dryer_running": "mdi:air-purifier",
-            "connected": "mdi:bluetooth-connect"
-        }
-        self._attr_icon = icon_map.get(sensor_key, "mdi:toilet")
+        self.entity_description = description
+        self._attr_name = description.name
+        self._attr_unique_id = f"geberit_aquaclean_{description.key}_{coordinator.client.mac_address.replace(':', '')}"
+        self._attr_device_class = description.device_class
+        self._attr_icon = description.icon
 
     @property
     def is_on(self) -> bool | None:
         """Return true if the binary sensor is on."""
         if self.coordinator.data is None:
             return None
-        return getattr(self.coordinator.data, self._sensor_key, False)
+        return getattr(self.coordinator.data, self.entity_description.key, False)
 
     @property
     def available(self) -> bool:
