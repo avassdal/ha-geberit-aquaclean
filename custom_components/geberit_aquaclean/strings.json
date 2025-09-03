@@ -3,30 +3,24 @@
     "step": {
       "user": {
         "title": "Geberit AquaClean Setup",
-        "description": "Setting up Geberit AquaClean device discovery.",
+        "description": "Enter your Geberit AquaClean device MAC address.",
         "data": {
-          "mac": "MAC Address"
+          "mac_address": "MAC Address"
         }
       },
-      "bluetooth": {
-        "title": "Select Geberit AquaClean Device",
-        "description": "Found {device_count} Geberit AquaClean device(s). Please select your device from the list below.",
-        "data": {
-          "device": "Device"
-        }
+      "bluetooth_confirm": {
+        "title": "Confirm Geberit AquaClean Device",
+        "description": "Do you want to set up {name}?"
       },
-      "no_devices": {
-        "title": "No Devices Found",
-        "description": "No Geberit AquaClean devices were found during the scan. Please ensure your device is powered on and in pairing mode, or enter the MAC address manually.",
-        "data": {
-          "action": "Action"
-        }
+      "reauth_confirm": {
+        "title": "Reauthenticate Integration",
+        "description": "The Geberit AquaClean integration needs to be reconfigured."
       },
-      "manual": {
-        "title": "Manual Device Setup",
-        "description": "Enter your Geberit AquaClean device MAC address manually.",
+      "reconfigure": {
+        "title": "Reconfigure {name}",
+        "description": "Update the configuration for your Geberit AquaClean device.",
         "data": {
-          "mac": "MAC Address"
+          "mac_address": "MAC Address"
         }
       }
     },
