@@ -18,7 +18,7 @@ from .geberit_client import GeberitAquaCleanClient
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[Platform] = [Platform.BINARY_SENSOR, Platform.SWITCH, Platform.NUMBER, Platform.SENSOR]
+PLATFORMS: list[Platform] = [Platform.BINARY_SENSOR, Platform.SWITCH, Platform.NUMBER, Platform.SENSOR, Platform.LIGHT]
 
 SCAN_INTERVAL = timedelta(seconds=15)
 

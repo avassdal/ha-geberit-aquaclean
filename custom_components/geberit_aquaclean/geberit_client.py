@@ -50,6 +50,10 @@ class DeviceState:
     water_temperature: int = 37  # 34-40°C
     seat_heating: bool = False
     night_light: bool = False
+    night_light_brightness: int = 50  # 0-100%
+    night_light_red: int = 255     # RGB Red 0-255
+    night_light_green: int = 255   # RGB Green 0-255
+    night_light_blue: int = 255    # RGB Blue 0-255
     # Spray controls
     spray_intensity: int = 3  # 1-5 levels
     spray_position: int = 3  # 1-5 positions
@@ -238,11 +242,126 @@ class GeberitAquaCleanClient:
     async def _initialize_device(self):
         """Initialize device and read basic information."""
         try:
-            # Read device information
+            # Read device identification and discover features
             await self._read_device_identification()
-        except Exception as e:
-            _LOGGER.warning("Failed to initialize device: %s", e)
+            await self._discover_device_features()
             
+        except Exception as e:
+            _LOGGER.error("Failed to initialize device: %s", e)
+            
+    async def _discover_device_features(self):
+        """Discover which features are available on this device model."""
+        _LOGGER.info("Starting feature discovery for device model")
+        
+        # Define feature test map: feature_name -> data_point_ids_to_test
+        feature_tests = {
+            "lady_shower": [1, 2, 3],  # Lady shower related data points
+            "anal_shower": [0, 4, 5],  # Anal shower related data points  
+            "dryer": [6, 7],           # Dryer related data points
+            "seat_heating": [8, 9],    # Seat heating data points
+            "night_light": [10, 11, 35, 36, 37], # Night light on/off, brightness, RGB values
+            "oscillating_spray": [12, 13], # Oscillating spray data points
+            "auto_flush": [14, 15],    # Auto flush data points
+            "user_profiles": [16, 17, 18, 19], # User profile data points
+            "descaling": [20, 21],     # Descaling status data points
+            "filter_status": [22, 23], # Filter replacement data points
+            "barrier_free": [24, 25],  # Barrier-free mode data points
+            "water_temperature": [26, 27, 28], # Temperature control
+            "spray_position": [29, 30, 31],    # Spray positioning
+            "spray_intensity": [32, 33, 34],   # Spray intensity control
+        }
+        
+        self.available_features = {}
+        
+        for feature_name, data_point_ids in feature_tests.items():
+            feature_available = False
+            
+            for data_point_id in data_point_ids:
+                try:
+                    # Create read request for this data point
+                    read_request = GeberitProtocolSerializer.create_read_data_point_request(data_point_id)
+                    frame_data = GeberitProtocolSerializer.encode_with_cobs(read_request)
+                    
+                    # Send with short timeout for feature probing
+                    response_data = await self._send_frame_and_wait_response(frame_data, timeout=2.0)
+                    
+                    if response_data:
+                        # If we get a valid response, feature is available
+                        feature_available = True
+                        _LOGGER.debug("Feature '%s' available (data point %d responded)", 
+                                    feature_name, data_point_id)
+                        break
+                        
+                except Exception as e:
+                    _LOGGER.debug("Data point %d for feature '%s' not available: %s", 
+                                data_point_id, feature_name, e)
+                    continue
+                    
+            self.available_features[feature_name] = feature_available
+            if feature_available:
+                _LOGGER.info("✅ Feature '%s' detected and available", feature_name)
+            else:
+                _LOGGER.info("❌ Feature '%s' not available on this model", feature_name)
+                
+        _LOGGER.info("Feature discovery complete. Available features: %s", 
+                   [name for name, available in self.available_features.items() if available])
+                   
+    def has_feature(self, feature_name: str) -> bool:
+        """Check if a specific feature is available on this device model."""
+        return self.available_features.get(feature_name, False)
+        
+    def get_available_features(self) -> list[str]:
+        """Get list of all available features on this device model."""
+        return [name for name, available in self.available_features.items() if available]
+        
+    async def set_night_light_state(self, state: bool) -> bool:
+        """Turn night light on or off."""
+        try:
+            command_id = 10 if state else 11  # Based on Geberit protocol documentation
+            command_frame = GeberitProtocolSerializer.create_high_level_command(command_id)
+            frame_data = GeberitProtocolSerializer.encode_with_cobs(command_frame)
+            response_data = await self._send_frame_and_wait_response(frame_data)
+            return response_data is not None
+        except Exception as e:
+            _LOGGER.error("Failed to set night light state to %s: %s", state, e)
+            return False
+            
+    async def set_night_light_brightness(self, brightness: int) -> bool:
+        """Set night light brightness (0-100)."""
+        try:
+            # Data point 35 for brightness control
+            write_request = GeberitProtocolSerializer.create_write_data_point_request(35, brightness)
+            frame_data = GeberitProtocolSerializer.encode_with_cobs(write_request)
+            response_data = await self._send_frame_and_wait_response(frame_data)
+            return response_data is not None
+        except Exception as e:
+            _LOGGER.error("Failed to set night light brightness to %d: %s", brightness, e)
+            return False
+            
+    async def set_night_light_color(self, red: int, green: int, blue: int) -> bool:
+        """Set night light RGB color."""
+        try:
+            # Data points 36, 37, 38 for RGB values
+            success = True
+            success &= await self._write_data_point(36, red)    # Red
+            success &= await self._write_data_point(37, green)  # Green  
+            success &= await self._write_data_point(38, blue)   # Blue
+            return success
+        except Exception as e:
+            _LOGGER.error("Failed to set night light color to RGB(%d,%d,%d): %s", red, green, blue, e)
+            return False
+            
+    async def _write_data_point(self, data_point_id: int, value: int) -> bool:
+        """Write a value to a specific data point."""
+        try:
+            write_request = GeberitProtocolSerializer.create_write_data_point_request(data_point_id, value)
+            frame_data = GeberitProtocolSerializer.encode_with_cobs(write_request)
+            response_data = await self._send_frame_and_wait_response(frame_data)
+            return response_data is not None
+        except Exception as e:
+            _LOGGER.error("Failed to write data point %d with value %d: %s", data_point_id, value, e)
+            return False
+        
     async def _read_device_identification(self):
         """Read device identification data."""
         try:
@@ -251,7 +370,14 @@ class GeberitAquaCleanClient:
                 request_frame = GeberitProtocolSerializer.create_device_info_request()
                 frame_data = GeberitProtocolSerializer.encode_with_cobs(request_frame)
                 response_data = await self._send_frame_and_wait_response(frame_data)
-                self._device_identification = GeberitProtocolSerializer.parse_device_info_response(response_data)
+                device_info = GeberitProtocolSerializer.parse_device_info_response(response_data)
+                
+                if device_info:
+                    _LOGGER.info("Device identification: %s (S/N: %s, SAP: %s)", 
+                               device_info.get("model", "Unknown"), 
+                               device_info.get("serial_number", "Unknown"),
+                               device_info.get("sap_number", "Unknown"))
+                    self._device_identification = device_info
                 
                 # Update device info from identification
                 if self._device_identification:
