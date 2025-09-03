@@ -5,7 +5,7 @@
         "title": "Geberit AquaClean Setup",
         "description": "Enter your Geberit AquaClean device MAC address.",
         "data": {
-          "mac_address": "MAC Address"
+          "mac": "MAC Address"
         }
       },
       "bluetooth_confirm": {
@@ -20,7 +20,7 @@
         "title": "Reconfigure {name}",
         "description": "Update the configuration for your Geberit AquaClean device.",
         "data": {
-          "mac_address": "MAC Address"
+          "mac": "MAC Address"
         }
       }
     },

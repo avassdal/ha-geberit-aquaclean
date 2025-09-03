@@ -6,7 +6,7 @@ from datetime import timedelta
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.const import CONF_MAC_ADDRESS
+from homeassistant.const import CONF_MAC
 from homeassistant.core import HomeAssistant, CoreState, callback
 from homeassistant.helpers.update_coordinator import UpdateFailed
 from homeassistant.exceptions import ConfigEntryNotReady
@@ -27,7 +27,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Geberit AquaClean from a config entry."""
     hass.data.setdefault(DOMAIN, {})
 
-    mac_address = entry.data[CONF_MAC_ADDRESS]
+    mac_address = entry.data[CONF_MAC]
     
     # Check if Bluetooth scanners are available (best practice)
     scanner_count = bluetooth.async_scanner_count(hass, connectable=True)

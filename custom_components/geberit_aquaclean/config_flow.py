@@ -4,7 +4,7 @@ from typing import Any
 import voluptuous as vol
 
 from homeassistant import config_entries
-from homeassistant.const import CONF_MAC_ADDRESS
+from homeassistant.const import CONF_MAC
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
@@ -18,14 +18,14 @@ _LOGGER = logging.getLogger(__name__)
 
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
-        vol.Required(CONF_MAC_ADDRESS): str,
+        vol.Required(CONF_MAC): str,
     }
 )
 
 
 async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
     """Validate the user input allows us to connect."""
-    mac_address = data[CONF_MAC_ADDRESS]
+    mac_address = data[CONF_MAC]
 
     # Validate MAC address format
     if not _is_valid_mac(mac_address):
@@ -97,7 +97,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             try:
                 # Validate the discovered device
                 mac_address = self._discovery_info.address
-                data = {CONF_MAC_ADDRESS: mac_address}
+                data = {CONF_MAC: mac_address}
                 info = await validate_input(self.hass, data)
                 
                 return self.async_create_entry(title=info["title"], data=data)
@@ -126,7 +126,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 info = await validate_input(self.hass, user_input)
                 
                 # Check if already configured
-                await self.async_set_unique_id(user_input[CONF_MAC_ADDRESS])
+                await self.async_set_unique_id(user_input[CONF_MAC])
                 self._abort_if_unique_id_configured()
                 
                 return self.async_create_entry(title=info["title"], data=user_input)
@@ -134,7 +134,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             except CannotConnect:
                 errors["base"] = "cannot_connect"
             except InvalidMac:
-                errors[CONF_MAC_ADDRESS] = "invalid_mac"
+                errors[CONF_MAC] = "invalid_mac"
             except Exception:  # pylint: disable=broad-except
                 _LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
@@ -168,7 +168,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             try:
                 await validate_input(self.hass, user_input)
                 
-                await self.async_set_unique_id(user_input[CONF_MAC_ADDRESS])
+                await self.async_set_unique_id(user_input[CONF_MAC])
                 self._abort_if_unique_id_mismatch()
                 
                 return self.async_update_reload_and_abort(
@@ -187,7 +187,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="reconfigure",
             data_schema=vol.Schema({
-                vol.Required(CONF_MAC_ADDRESS, default=config_entry.data.get(CONF_MAC_ADDRESS)): str,
+                vol.Required(CONF_MAC, default=config_entry.data.get(CONF_MAC)): str,
             }),
             description_placeholders={"name": config_entry.title},
         )
