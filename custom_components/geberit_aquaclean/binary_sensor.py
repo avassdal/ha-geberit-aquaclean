@@ -1,10 +1,7 @@
 """Binary sensor platform for Geberit AquaClean."""
 from __future__ import annotations
 
-from homeassistant.components.binary_sensor import (
-    BinarySensorDeviceClass,
-    BinarySensorEntity,
-)
+from homeassistant.components.binary_sensor import BinarySensorEntity, BinarySensorDeviceClass, BinarySensorEntityDescription
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -21,12 +18,53 @@ async def async_setup_entry(
     """Set up the binary sensor platform."""
     coordinator = hass.data[DOMAIN][config_entry.entry_id]["coordinator"]
     
+    BINARY_SENSORS: tuple[BinarySensorEntityDescription, ...] = (
+        BinarySensorEntityDescription(
+            key="user_is_sitting",
+            name="User Present",
+            icon="mdi:account-check",
+            device_class=BinarySensorDeviceClass.OCCUPANCY,
+        ),
+        BinarySensorEntityDescription(
+            key="anal_shower_running",
+            name="Rear Wash Active",
+            icon="mdi:shower",
+            device_class=BinarySensorDeviceClass.RUNNING,
+        ),
+        BinarySensorEntityDescription(
+            key="lady_shower_running", 
+            name="Front Wash Active",
+            icon="mdi:shower-head",
+            device_class=BinarySensorDeviceClass.RUNNING,
+        ),
+        BinarySensorEntityDescription(
+            key="dryer_running",
+            name="Air Dry Active",
+            icon="mdi:air-purifier",
+            device_class=BinarySensorDeviceClass.RUNNING,
+        ),
+        BinarySensorEntityDescription(
+            key="lid_position",
+            name="Lid Open",
+            icon="mdi:toilet",
+            device_class=BinarySensorDeviceClass.OPENING,
+        ),
+        BinarySensorEntityDescription(
+            key="descaling_needed",
+            name="Descaling Required",
+            icon="mdi:alert-circle",
+            device_class=BinarySensorDeviceClass.PROBLEM,
+        ),
+        BinarySensorEntityDescription(
+            key="filter_replacement_needed",
+            name="Filter Replacement Required",
+            icon="mdi:air-filter",
+            device_class=BinarySensorDeviceClass.PROBLEM,
+        ),
+    )
+    
     entities = [
-        GeberitBinarySensor(coordinator, "user_is_sitting", "User Sitting", BinarySensorDeviceClass.OCCUPANCY),
-        GeberitBinarySensor(coordinator, "anal_shower_running", "Anal Shower", BinarySensorDeviceClass.RUNNING),
-        GeberitBinarySensor(coordinator, "lady_shower_running", "Lady Shower", BinarySensorDeviceClass.RUNNING),
-        GeberitBinarySensor(coordinator, "dryer_running", "Dryer", BinarySensorDeviceClass.RUNNING),
-        GeberitBinarySensor(coordinator, "connected", "Connection", BinarySensorDeviceClass.CONNECTIVITY),
+        GeberitBinarySensor(coordinator, description) for description in BINARY_SENSORS
     ]
     
     async_add_entities(entities)
@@ -39,9 +77,19 @@ class GeberitBinarySensor(CoordinatorEntity, BinarySensorEntity):
         """Initialize the binary sensor."""
         super().__init__(coordinator)
         self._sensor_key = sensor_key
-        self._attr_name = f"Geberit AquaClean {name}"
+        self._attr_name = f"{name}"
         self._attr_unique_id = f"geberit_aquaclean_{sensor_key}_{coordinator.client.mac_address.replace(':', '')}"
         self._attr_device_class = device_class
+        
+        # Add entity icons for better UX
+        icon_map = {
+            "user_is_sitting": "mdi:human",
+            "anal_shower_running": "mdi:shower",
+            "lady_shower_running": "mdi:shower-head",
+            "dryer_running": "mdi:air-purifier",
+            "connected": "mdi:bluetooth-connect"
+        }
+        self._attr_icon = icon_map.get(sensor_key, "mdi:toilet")
 
     @property
     def is_on(self) -> bool | None:
@@ -58,10 +106,14 @@ class GeberitBinarySensor(CoordinatorEntity, BinarySensorEntity):
     @property
     def device_info(self):
         """Return device information."""
+        device_data = self.coordinator.data
         return {
             "identifiers": {(DOMAIN, self.coordinator.client.mac_address)},
-            "name": "Geberit AquaClean",
+            "name": getattr(device_data, "description", "Geberit AquaClean") if device_data else "Geberit AquaClean",
             "manufacturer": "Geberit",
             "model": "AquaClean",
-            "sw_version": getattr(self.coordinator.data, "sap_number", "Unknown"),
+            "sw_version": getattr(device_data, "firmware_version", "Unknown") if device_data else "Unknown",
+            "serial_number": getattr(device_data, "serial_number", None) if device_data else None,
+            "hw_version": getattr(device_data, "sap_number", None) if device_data else None,
+            "via_device": (DOMAIN, self.coordinator.client.mac_address),
         }

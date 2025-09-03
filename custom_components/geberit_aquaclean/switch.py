@@ -26,6 +26,9 @@ async def async_setup_entry(
     
     entities = [
         GeberitLidSwitch(coordinator, client),
+        GeberitRearWashSwitch(coordinator, client),
+        GeberitFrontWashSwitch(coordinator, client),
+        GeberitDryerSwitch(coordinator, client),
     ]
     
     async_add_entities(entities)
@@ -38,8 +41,9 @@ class GeberitLidSwitch(CoordinatorEntity, SwitchEntity):
         """Initialize the switch."""
         super().__init__(coordinator)
         self._client = client
-        self._attr_name = "Geberit AquaClean Lid"
+        self._attr_name = "Lid"
         self._attr_unique_id = f"geberit_aquaclean_lid_{coordinator.client.mac_address.replace(':', '')}"
+        self._attr_icon = "mdi:toilet"
 
     @property
     def is_on(self) -> bool | None:
@@ -82,10 +86,205 @@ class GeberitLidSwitch(CoordinatorEntity, SwitchEntity):
     @property
     def device_info(self):
         """Return device information."""
+        device_data = self.coordinator.data
         return {
             "identifiers": {(DOMAIN, self.coordinator.client.mac_address)},
-            "name": "Geberit AquaClean",
+            "name": getattr(device_data, "description", "Geberit AquaClean") if device_data else "Geberit AquaClean",
             "manufacturer": "Geberit",
             "model": "AquaClean",
-            "sw_version": getattr(self.coordinator.data, "sap_number", "Unknown") if self.coordinator.data else "Unknown",
+            "sw_version": getattr(device_data, "firmware_version", "Unknown") if device_data else "Unknown",
+            "serial_number": getattr(device_data, "serial_number", None) if device_data else None,
+            "hw_version": getattr(device_data, "sap_number", None) if device_data else None,
+        }
+
+
+class GeberitRearWashSwitch(CoordinatorEntity, SwitchEntity):
+    """Representation of a Geberit AquaClean rear wash switch."""
+
+    def __init__(self, coordinator, client):
+        """Initialize the switch."""
+        super().__init__(coordinator)
+        self._client = client
+        self._attr_name = "Rear Wash"
+        self._attr_unique_id = f"geberit_aquaclean_rear_wash_{coordinator.client.mac_address.replace(':', '')}"
+        self._attr_icon = "mdi:shower"
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return true if rear wash is running."""
+        if self.coordinator.data is None:
+            return None
+        return self.coordinator.data.anal_shower_running
+
+    @property
+    def available(self) -> bool:
+        """Return True if entity is available."""
+        return (
+            self.coordinator.last_update_success 
+            and self.coordinator.data is not None 
+            and self.coordinator.data.connected
+        )
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Start rear wash."""
+        try:
+            success = await self._client.start_rear_wash()
+            if success:
+                await self.coordinator.async_request_refresh()
+            else:
+                _LOGGER.error("Failed to start rear wash")
+        except Exception as e:
+            _LOGGER.error("Error starting rear wash: %s", e)
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Stop rear wash."""
+        try:
+            success = await self._client.stop_rear_wash()
+            if success:
+                await self.coordinator.async_request_refresh()
+            else:
+                _LOGGER.error("Failed to stop rear wash")
+        except Exception as e:
+            _LOGGER.error("Error stopping rear wash: %s", e)
+
+    @property
+    def device_info(self):
+        """Return device information."""
+        device_data = self.coordinator.data
+        return {
+            "identifiers": {(DOMAIN, self.coordinator.client.mac_address)},
+            "name": getattr(device_data, "description", "Geberit AquaClean") if device_data else "Geberit AquaClean",
+            "manufacturer": "Geberit",
+            "model": "AquaClean",
+            "sw_version": getattr(device_data, "firmware_version", "Unknown") if device_data else "Unknown",
+            "serial_number": getattr(device_data, "serial_number", None) if device_data else None,
+            "hw_version": getattr(device_data, "sap_number", None) if device_data else None,
+        }
+
+
+class GeberitFrontWashSwitch(CoordinatorEntity, SwitchEntity):
+    """Representation of a Geberit AquaClean front wash switch."""
+
+    def __init__(self, coordinator, client):
+        """Initialize the switch."""
+        super().__init__(coordinator)
+        self._client = client
+        self._attr_name = "Front Wash"
+        self._attr_unique_id = f"geberit_aquaclean_front_wash_{coordinator.client.mac_address.replace(':', '')}"
+        self._attr_icon = "mdi:shower-head"
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return true if front wash is running."""
+        if self.coordinator.data is None:
+            return None
+        return self.coordinator.data.lady_shower_running
+
+    @property
+    def available(self) -> bool:
+        """Return True if entity is available."""
+        return (
+            self.coordinator.last_update_success 
+            and self.coordinator.data is not None 
+            and self.coordinator.data.connected
+        )
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Start front wash."""
+        try:
+            success = await self._client.start_front_wash()
+            if success:
+                await self.coordinator.async_request_refresh()
+            else:
+                _LOGGER.error("Failed to start front wash")
+        except Exception as e:
+            _LOGGER.error("Error starting front wash: %s", e)
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Stop front wash."""
+        try:
+            success = await self._client.stop_front_wash()
+            if success:
+                await self.coordinator.async_request_refresh()
+            else:
+                _LOGGER.error("Failed to stop front wash")
+        except Exception as e:
+            _LOGGER.error("Error stopping front wash: %s", e)
+
+    @property
+    def device_info(self):
+        """Return device information."""
+        device_data = self.coordinator.data
+        return {
+            "identifiers": {(DOMAIN, self.coordinator.client.mac_address)},
+            "name": getattr(device_data, "description", "Geberit AquaClean") if device_data else "Geberit AquaClean",
+            "manufacturer": "Geberit",
+            "model": "AquaClean",
+            "sw_version": getattr(device_data, "firmware_version", "Unknown") if device_data else "Unknown",
+            "serial_number": getattr(device_data, "serial_number", None) if device_data else None,
+            "hw_version": getattr(device_data, "sap_number", None) if device_data else None,
+        }
+
+
+class GeberitDryerSwitch(CoordinatorEntity, SwitchEntity):
+    """Representation of a Geberit AquaClean dryer switch."""
+
+    def __init__(self, coordinator, client):
+        """Initialize the switch."""
+        super().__init__(coordinator)
+        self._client = client
+        self._attr_name = "Air Dry"
+        self._attr_unique_id = f"geberit_aquaclean_dryer_{coordinator.client.mac_address.replace(':', '')}"
+        self._attr_icon = "mdi:air-purifier"
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return true if dryer is running."""
+        if self.coordinator.data is None:
+            return None
+        return self.coordinator.data.dryer_running
+
+    @property
+    def available(self) -> bool:
+        """Return True if entity is available."""
+        return (
+            self.coordinator.last_update_success 
+            and self.coordinator.data is not None 
+            and self.coordinator.data.connected
+        )
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Start dryer."""
+        try:
+            success = await self._client.start_dryer()
+            if success:
+                await self.coordinator.async_request_refresh()
+            else:
+                _LOGGER.error("Failed to start dryer")
+        except Exception as e:
+            _LOGGER.error("Error starting dryer: %s", e)
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Stop dryer."""
+        try:
+            success = await self._client.stop_dryer()
+            if success:
+                await self.coordinator.async_request_refresh()
+            else:
+                _LOGGER.error("Failed to stop dryer")
+        except Exception as e:
+            _LOGGER.error("Error stopping dryer: %s", e)
+
+    @property
+    def device_info(self):
+        """Return device information."""
+        device_data = self.coordinator.data
+        return {
+            "identifiers": {(DOMAIN, self.coordinator.client.mac_address)},
+            "name": getattr(device_data, "description", "Geberit AquaClean") if device_data else "Geberit AquaClean",
+            "manufacturer": "Geberit",
+            "model": "AquaClean",
+            "sw_version": getattr(device_data, "firmware_version", "Unknown") if device_data else "Unknown",
+            "serial_number": getattr(device_data, "serial_number", None) if device_data else None,
+            "hw_version": getattr(device_data, "sap_number", None) if device_data else None,
         }
