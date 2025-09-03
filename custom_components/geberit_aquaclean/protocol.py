@@ -395,7 +395,7 @@ class SystemParameters:
     barrier_free_mode: bool = False
     active_user_profile: int = 1  # 1-4
 
-class FrameCollector:
+class BLEFrameCollector:
     """Collects and assembles protocol frames into complete messages."""
     
     def __init__(self):
