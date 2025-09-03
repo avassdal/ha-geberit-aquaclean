@@ -1,5 +1,6 @@
 """Config flow for Geberit AquaClean integration."""
 import logging
+from typing import Any
 import voluptuous as vol
 
 from homeassistant import config_entries
@@ -21,7 +22,7 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
 )
 
 
-async def validate_input(hass: HomeAssistant, data: dict[str, any]) -> dict[str, any]:
+async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
     """Validate the user input allows us to connect."""
     mac_address = data[CONF_MAC_ADDRESS]
 
@@ -71,7 +72,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
     async def async_step_user(
-        self, user_input: dict[str, any] | None = None
+        self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Handle the initial step."""
         errors: dict[str, str] = {}
