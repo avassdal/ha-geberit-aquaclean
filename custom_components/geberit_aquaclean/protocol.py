@@ -586,7 +586,7 @@ class GeberitProtocolSerializer:
         try:
             params = SystemParameters()
             
-            if len(data) >= 6:
+            if data and len(data) >= 6:
                 # Parse status values from response
                 status_bytes = struct.unpack('<6B', data[:6])
                 

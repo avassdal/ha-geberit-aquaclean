@@ -567,18 +567,17 @@ class GeberitAquaCleanClient:
                 
                 if device_info:
                     _LOGGER.info("Device identification: %s (S/N: %s, SAP: %s)", 
-                               device_info.get("model", "Unknown"), 
-                               device_info.get("serial_number", "Unknown"),
-                               device_info.get("sap_number", "Unknown"))
+                               device_info.description or "Unknown", 
+                               device_info.serial_number or "Unknown",
+                               device_info.sap_number or "Unknown")
                     self._device_identification = device_info
                 
-                # Update device info from identification
-                if self._device_identification:
-                    self._device_state.sap_number = self._device_identification.sap_number
-                    self._device_state.serial_number = self._device_identification.serial_number
-                    self._device_state.production_date = self._device_identification.production_date
-                    self._device_state.description = self._device_identification.description
-                    self._device_state.firmware_version = self._device_identification.firmware_version or "Geberit AquaClean"
+                    # Update device info from identification
+                    self._device_state.sap_number = device_info.sap_number or "Unknown"
+                    self._device_state.serial_number = device_info.serial_number or "Unknown"
+                    self._device_state.production_date = device_info.production_date or "Unknown"
+                    self._device_state.description = device_info.description or "Geberit AquaClean"
+                    self._device_state.firmware_version = device_info.firmware_version or "Geberit AquaClean"
                 
                 _LOGGER.info("Device identification: %s (S/N: %s, SAP: %s)", 
                            self._device_state.description,
@@ -590,29 +589,32 @@ class GeberitAquaCleanClient:
     
     async def _send_frame_and_wait_response(self, frame_data: bytes, timeout: float = RESPONSE_TIMEOUT) -> bytes:
         """Send a frame and wait for response."""
+        if not self._client or not self._client.is_connected:
+            raise RuntimeError("Client not connected")
+            
+        self._last_response_data = None
+        self._response_event.clear()
+        
+        # Send the frame
         try:
-            # Clear previous response
-            self._response_event.clear()
-            self._last_response_data = None
-            
-            # Send the frame data (already encoded with COBS)
-            hex_data = binascii.hexlify(frame_data).decode('ascii')
-            _LOGGER.debug("Sending frame to %s: %s (length: %d)", WRITE_CHARACTERISTIC_UUID, hex_data, len(frame_data))
             await self._client.write_gatt_char(WRITE_CHARACTERISTIC_UUID, frame_data)
-            _LOGGER.debug("Frame sent successfully")
-            
-            # Wait for response
-            try:
-                await asyncio.wait_for(self._response_event.wait(), timeout=timeout)
-                return self._last_response_data
-            except asyncio.TimeoutError:
-                _LOGGER.warning("Timeout waiting for response")
-                return None
-                
+            _LOGGER.debug("Sent frame: %s", binascii.hexlify(frame_data).decode('ascii'))
         except Exception as e:
             _LOGGER.error("Failed to send frame: %s", e)
-            return None
-            
+            return b''
+        
+        # Wait for response
+        try:
+            await asyncio.wait_for(self._response_event.wait(), timeout=timeout)
+            if self._last_response_data:
+                return self._last_response_data
+            else:
+                _LOGGER.debug("Received event but no response data")
+                return b''
+        except asyncio.TimeoutError:
+            _LOGGER.debug("Timeout waiting for response after %s seconds", timeout)
+            return b''
+
     async def get_device_state(self) -> DeviceState:
         """Get current device state."""
         if not self._connected or not self._client or not self._client.is_connected:
