@@ -1,6 +1,7 @@
 """Geberit AquaClean BLE client implementation."""
 import asyncio
 import logging
+import binascii
 from dataclasses import dataclass
 from typing import Optional
 from bleak import BleakClient, BleakScanner
@@ -23,6 +24,9 @@ NOTIFY_CHARACTERISTIC_UUID = "00002A25-0000-1000-8000-00805F9B34FB"
 
 # Response timeout for BLE commands (increased per HA best practices)
 RESPONSE_TIMEOUT = 10.0
+
+# Debug mode (set to True to enable verbose logging without config changes)
+DEBUG_MODE = True
 CONNECTION_TIMEOUT = 15.0
 
 @dataclass
@@ -135,29 +139,69 @@ class GeberitAquaCleanClient:
     async def _setup_notifications(self):
         """Setup BLE notifications for receiving data."""
         try:
+            # Log available services and characteristics for debugging
+            if DEBUG_MODE:
+                _LOGGER.info("=== BLE Services Discovery for %s ===", self.mac_address)
+                for service in self._client.services:
+                    _LOGGER.info("Service: %s (%s)", service.uuid, service.description or "Unknown")
+                    for char in service.characteristics:
+                        props = [p.name for p in char.properties]
+                        _LOGGER.info("  Char: %s - Properties: %s", char.uuid, props)
+                        if "notify" in [p.name.lower() for p in char.properties]:
+                            _LOGGER.info("    -> NOTIFY capable characteristic found!")
+            
+            if DEBUG_MODE:
+                _LOGGER.info("Attempting to setup notifications on %s", NOTIFY_CHARACTERISTIC_UUID)
             await self._client.start_notify(NOTIFY_CHARACTERISTIC_UUID, self._handle_notification)
             _LOGGER.debug("Notifications setup successfully")
         except Exception as e:
-            _LOGGER.warning("Failed to setup notifications: %s", e)
+            _LOGGER.error("Failed to setup notifications on %s: %s", NOTIFY_CHARACTERISTIC_UUID, e)
+            
+            # Try to find alternative notification characteristics
+            notify_chars = []
+            for service in self._client.services:
+                for char in service.characteristics:
+                    if "notify" in [p.name.lower() for p in char.properties]:
+                        notify_chars.append(str(char.uuid))
+            
+            if notify_chars:
+                _LOGGER.error("Available notify characteristics: %s", notify_chars)
+                _LOGGER.error("Consider updating NOTIFY_CHARACTERISTIC_UUID to one of these")
+            else:
+                _LOGGER.error("No notify-capable characteristics found on device")
+            raise
             
     def _handle_notification(self, sender: int, data: bytes):
         """Handle incoming BLE notifications."""
         try:
-            _LOGGER.debug("Received notification: %s", data.hex())
+            hex_data = binascii.hexlify(data).decode('ascii')
+            if DEBUG_MODE:
+                _LOGGER.info("Received notification from %s: %s (length: %d)", sender, hex_data, len(data))
             
             # Parse frame from received data  
             frame = GeberitProtocolSerializer.decode_from_cobs(data)
             if frame:
+                _LOGGER.debug("Successfully decoded frame: type=%s, length=%d", 
+                             getattr(frame, 'frame_type', 'unknown'), len(data))
                 # Add frame to collector
                 if self._frame_collector.add_frame(frame):
                     # Complete message received
                     message_data = self._frame_collector.get_complete_message()
                     if message_data:
+                        _LOGGER.debug("Complete message assembled: %s", 
+                                     binascii.hexlify(message_data).decode('ascii'))
                         self._last_response_data = message_data
                         self._response_event.set()
-                        
+                else:
+                    _LOGGER.debug("Frame added to collector, waiting for more frames")
+            else:
+                _LOGGER.warning("Failed to decode frame from notification data: %s", hex_data)
+                _LOGGER.debug("Raw data analysis: first_byte=0x%02x, last_byte=0x%02x", 
+                             data[0] if data else 0, data[-1] if data else 0)
+                
         except Exception as e:
             _LOGGER.error("Error handling notification: %s", e)
+            _LOGGER.debug("Exception occurred with data: %s", hex_data)
             
     async def _initialize_device(self):
         """Initialize device and read basic information."""
@@ -201,8 +245,10 @@ class GeberitAquaCleanClient:
             self._last_response_data = None
             
             # Send the frame data (already encoded with COBS)
+            hex_data = binascii.hexlify(frame_data).decode('ascii')
+            _LOGGER.debug("Sending frame to %s: %s (length: %d)", WRITE_CHARACTERISTIC_UUID, hex_data, len(frame_data))
             await self._client.write_gatt_char(WRITE_CHARACTERISTIC_UUID, frame_data)
-            _LOGGER.debug("Sent frame: %s", frame_data.hex())
+            _LOGGER.debug("Frame sent successfully")
             
             # Wait for response
             try:
