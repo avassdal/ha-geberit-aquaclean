@@ -24,8 +24,8 @@ _LOGGER = logging.getLogger(__name__)
 WRITE_CHARACTERISTIC_UUID = "3334429d-90f3-4c41-a02d-5cb3a33e0000"  # Write capability (Handle 8)
 NOTIFY_CHARACTERISTIC_UUID = "3334429d-90f3-4c41-a02d-5cb3a63e0000"  # Notify capability (Handle 18)
 
-# Response timeout for BLE commands (increased per HA best practices)
-RESPONSE_TIMEOUT = 10.0
+# Response timeout for BLE commands (increased per HA best practices for better reliability)
+RESPONSE_TIMEOUT = 15.0
 
 # Debug mode (set to True to enable verbose logging without config changes)
 DEBUG_MODE = True
@@ -128,8 +128,12 @@ class GeberitAquaCleanClient:
             
             if not self._client.is_connected:
                 _LOGGER.error("Failed to connect to device %s", self.mac_address)
+                self._connected = False
                 return False
                 
+            # Mark as connected before setting up notifications
+            self._connected = True
+            
             # Setup notifications
             await self._setup_notifications()
             
@@ -156,6 +160,9 @@ class GeberitAquaCleanClient:
             await self._client.disconnect()
             self._connected = False
             _LOGGER.info("Disconnected from Geberit AquaClean")
+        else:
+            # Ensure connection state is consistent even if client is None or not connected
+            self._connected = False
             
     async def _setup_notifications(self):
         """Setup BLE notifications for receiving data."""
@@ -214,12 +221,12 @@ class GeberitAquaCleanClient:
             raise
             
     def _handle_notification(self, sender: int, data: bytes):
-        """Handle incoming BLE notifications."""
+        """Handle incoming BLE notifications with improved error handling."""
         try:
             hex_data = binascii.hexlify(data).decode('ascii')
             if DEBUG_MODE:
                 _LOGGER.info("Received notification from %s: %s (length: %d)", sender, hex_data, len(data))
-                
+
                 # Decode frame header according to Geberit protocol documentation
                 if len(data) > 1:
                     header = data[0]
@@ -227,37 +234,49 @@ class GeberitAquaCleanClient:
                     msg_type_present = (header >> 4) & 0x01  # Bit 4
                     transaction = (header >> 1) & 0x07  # Bits 3-1
                     flags = header & 0x01  # Bit 0
-                    
-                    _LOGGER.info("Frame Header Analysis: ID=%d, MsgType=%d, Trans=%d, Flags=%d", 
+
+                    _LOGGER.info("Frame Header Analysis: ID=%d, MsgType=%d, Trans=%d, Flags=%d",
                                 frame_id, msg_type_present, transaction, flags)
-            
-            # Parse frame from received data  
-            frame = GeberitProtocolSerializer.decode_from_cobs(data)
+
+            # Parse frame from received data with error handling
+            try:
+                frame = GeberitProtocolSerializer.decode_from_cobs(data)
+            except Exception as decode_error:
+                _LOGGER.warning("Failed to decode frame from notification data: %s", decode_error)
+                return
+
             if frame:
                 _LOGGER.debug("Successfully decoded frame: length=%d", len(data))
-                # Add frame to collector
-                if self._frame_collector.add_frame(frame):
-                    message_data = self._frame_collector.get_complete_message()
-                    if message_data:
-                        _LOGGER.debug("Complete message assembled: %s", 
-                                     binascii.hexlify(message_data).decode('ascii'))
-                        self._last_response_data = message_data
-                        self._response_event.set()
-                        
-                        # Parse status notifications for live updates
-                        status_params = GeberitProtocolSerializer.parse_device_notification(message_data)
-                        if status_params:
-                            self._update_device_state_from_notification(status_params)
-                else:
-                    _LOGGER.debug("Frame added to collector, waiting for more frames")
+                # Add frame to collector with error handling
+                try:
+                    if self._frame_collector.add_frame(frame):
+                        message_data = self._frame_collector.get_complete_message()
+                        if message_data:
+                            _LOGGER.debug("Complete message assembled: %s",
+                                         binascii.hexlify(message_data).decode('ascii'))
+                            self._last_response_data = message_data
+                            self._response_event.set()
+
+                            # Parse status notifications for live updates with error handling
+                            try:
+                                status_params = GeberitProtocolSerializer.parse_device_notification(message_data)
+                                if status_params:
+                                    self._update_device_state_from_notification(status_params)
+                            except Exception as parse_error:
+                                _LOGGER.warning("Failed to parse device notification: %s", parse_error)
+                    else:
+                        _LOGGER.debug("Frame added to collector, waiting for more frames")
+                except Exception as collector_error:
+                    _LOGGER.warning("Error processing frame collector: %s", collector_error)
             else:
                 _LOGGER.warning("Failed to decode frame from notification data: %s", hex_data)
-                _LOGGER.debug("Raw data analysis: first_byte=0x%02x, last_byte=0x%02x", 
+                _LOGGER.debug("Raw data analysis: first_byte=0x%02x, last_byte=0x%02x",
                              data[0] if data else 0, data[-1] if data else 0)
-                
+
         except Exception as e:
             _LOGGER.error("Error handling notification: %s", e)
-            _LOGGER.debug("Exception occurred with data: %s", hex_data)
+            if DEBUG_MODE:
+                _LOGGER.debug("Exception occurred with data: %s", binascii.hexlify(data).decode('ascii') if data else "None")
             
     async def _initialize_device(self):
         """Initialize device and read basic information."""
@@ -672,50 +691,79 @@ class GeberitAquaCleanClient:
         except Exception as e:
             _LOGGER.warning("Failed to read device identification: %s", e)
     
-    async def _send_frame_and_wait_response(self, frame_data: bytes, timeout: float = RESPONSE_TIMEOUT) -> bytes:
-        """Send a frame and wait for response."""
+    async def _send_frame_and_wait_response(self, frame_data: bytes, timeout: float = RESPONSE_TIMEOUT, retries: int = 2) -> bytes:
+        """Send a frame and wait for response with retry logic for transient failures."""
         if not self._client or not self._client.is_connected:
             raise RuntimeError("Client not connected")
-            
-        self._last_response_data = None
-        self._response_event.clear()
-        
-        # Send the frame
-        try:
-            await self._client.write_gatt_char(WRITE_CHARACTERISTIC_UUID, frame_data)
-            _LOGGER.debug("Sent frame: %s", binascii.hexlify(frame_data).decode('ascii'))
-        except Exception as e:
-            _LOGGER.error("Failed to send frame: %s", e)
-            return b''
-        
-        # Wait for response
-        try:
-            await asyncio.wait_for(self._response_event.wait(), timeout=timeout)
-            if self._last_response_data:
-                return self._last_response_data
-            else:
-                _LOGGER.debug("Received event but no response data")
+
+        for attempt in range(retries + 1):
+            try:
+                self._last_response_data = None
+                self._response_event.clear()
+
+                # Send the frame
+                await self._client.write_gatt_char(WRITE_CHARACTERISTIC_UUID, frame_data)
+                _LOGGER.debug("Sent frame (attempt %d/%d): %s", attempt + 1, retries + 1,
+                             binascii.hexlify(frame_data).decode('ascii'))
+
+                # Wait for response
+                try:
+                    await asyncio.wait_for(self._response_event.wait(), timeout=timeout)
+                    if self._last_response_data:
+                        return self._last_response_data
+                    else:
+                        if attempt < retries:
+                            _LOGGER.debug("Received event but no response data, retrying...")
+                            await asyncio.sleep(0.5)  # Brief pause before retry
+                            continue
+                        _LOGGER.debug("Received event but no response data after all retries")
+                        return b''
+                except asyncio.TimeoutError:
+                    if attempt < retries:
+                        _LOGGER.debug("Timeout waiting for response (attempt %d/%d), retrying...",
+                                     attempt + 1, retries + 1)
+                        await asyncio.sleep(1.0)  # Longer pause before retry
+                        continue
+                    _LOGGER.debug("Timeout waiting for response after %s seconds and %d retries",
+                                 timeout, retries)
+                    return b''
+
+            except Exception as e:
+                if attempt < retries:
+                    _LOGGER.warning("Error sending frame (attempt %d/%d): %s, retrying...",
+                                   attempt + 1, retries + 1, e)
+                    await asyncio.sleep(0.5)
+                    continue
+                _LOGGER.error("Failed to send frame after %d retries: %s", retries + 1, e)
                 return b''
-        except asyncio.TimeoutError:
-            _LOGGER.debug("Timeout waiting for response after %s seconds", timeout)
-            return b''
+
+        return b''
 
     async def get_device_state(self) -> DeviceState:
-        """Get current device state."""
-        if not self._connected or not self._client or not self._client.is_connected:
-            if not await self.connect():
-                self._device_state.connected = False
-                return self._device_state
-                
+        """Get current device state with retry logic for transient connection issues."""
+        # Retry connection up to 2 times if not connected
+        connection_retries = 2 if not self._connected else 0
+
+        for attempt in range(connection_retries + 1):
+            if not self._connected or not self._client or not self._client.is_connected:
+                if not await self.connect():
+                    self._device_state.connected = False
+                    if attempt < connection_retries:
+                        _LOGGER.debug("Failed to connect (attempt %d/%d), retrying...",
+                                     attempt + 1, connection_retries + 1)
+                        await asyncio.sleep(1.0)
+                        continue
+                    return self._device_state
+
         try:
-            # Read system parameters using the protocol
+            # Read system parameters using the protocol with retry
             await self._read_system_parameters()
             self._device_state.connected = True
-            
+
         except Exception as e:
             _LOGGER.error("Failed to get device state: %s", e)
             self._device_state.connected = False
-            
+
         return self._device_state
         
     async def _read_system_parameters(self):
@@ -1157,13 +1205,12 @@ class GeberitAquaCleanClient:
                 self._device_state.system_params = status_params
                 _LOGGER.debug("Device state updated from notification: sitting=%s, anal_shower=%s, lady_shower=%s, dryer=%s",
                              status_params.user_is_sitting,
-                             status_params.anal_shower_running, 
+                             status_params.anal_shower_running,
                              status_params.lady_shower_running,
                              status_params.dryer_running)
-                
-                # Trigger coordinator update if available
-                if hasattr(self, '_coordinator') and self._coordinator:
-                    self._coordinator.async_set_updated_data(self._device_state)
-                    
+
+                # Note: Coordinator updates are handled by the coordinator's _async_handle_bluetooth_event
+                # No need to trigger coordinator updates here as notifications are processed by the coordinator
+
         except Exception as e:
             _LOGGER.error("Failed to update device state from notification: %s", e)
