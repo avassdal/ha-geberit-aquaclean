@@ -165,3 +165,8 @@ class GeberitActiveBluetoothCoordinator(ActiveBluetoothDataUpdateCoordinator):
         self._was_unavailable = False
         _LOGGER.info("Device %s is now available (RSSI: %s)", service_info.address, service_info.rssi)
         super()._async_handle_bluetooth_event(service_info, change)
+
+    async def async_request_refresh(self) -> None:
+        """Request a refresh of the device data."""
+        _LOGGER.debug("Manual refresh requested for device %s", self.base_unique_id)
+        await self._async_update(self.last_service_info)
